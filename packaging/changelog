@@ -1,0 +1,8 @@
+simple-yt-downloader (1.0.0) unstable; urgency=medium
+
+  * Initial 1.0.0 release.
+  * Indigo Tonal redesign: layered cards, segmented pills, native accent.
+  * Light-theme canvas with dark-mode border overrides.
+  * Settings screen with theme control, cookies file, and About card.
+
+ -- MD. Mahmudul Hasan <mdhasan0078@users.noreply.github.com>  Fri, 31 Jul 2026 12:40:00 +0000

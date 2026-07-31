@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Simple YT Downloader
+Comment=Download YouTube videos, audio, and playlists with pause/resume
+Exec=/usr/bin/simple-yt-downloader
+Icon=simple-yt-downloader
+Categories=Network;Video;AudioVideo;
+Terminal=false
+StartupNotify=true
