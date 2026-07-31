@@ -1,0 +1,12 @@
+[Icon Theme]
+Name=Simple YT Downloader
+Comment=Icons bundled with Simple YT Downloader
+Directories=scalable/actions
+Inherits=hicolor
+
+[scalable/actions]
+Size=16
+MinSize=8
+MaxSize=512
+Type=Scalable
+Context=Actions

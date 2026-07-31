@@ -44,7 +44,7 @@ find "$PKG_DIR" -name "*.pyc" -delete
 chmod 755 "$PKG_DIR/DEBIAN" "$PKG_DIR/DEBIAN/postinst" "$PKG_DIR/DEBIAN/postrm"
 chmod 644 "$PKG_DIR/DEBIAN/control"
 chmod 755 "$PKG_DIR/usr/bin/simple-yt-downloader"
-find "$PKG_DIR/usr/lib" -name "*.py" -exec chmod 644 {} \;
+find "$PKG_DIR/usr/lib" -type f -exec chmod 644 {} \;
 find "$PKG_DIR/usr/share" -type f -exec chmod 644 {} \;
 find "$PKG_DIR" -type d -exec chmod 755 {} \;
 

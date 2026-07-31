@@ -8,6 +8,7 @@ from gi.repository import GLib, Gtk, Pango
 
 from . import config as config_module
 from . import dependencies
+from . import icons
 from . import style
 from .download_task import DownloadTask
 from .row_widgets import LoadingRow, PlaylistRow, VideoRow, _icon_theme_has
@@ -26,6 +27,7 @@ _URL_SPLIT_RE = re.compile(r"[\s,]+")
 class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title=APP_TITLE)
+        icons.register_bundled_icons()
         self._original_theme_name = Gtk.Settings.get_default().get_property("gtk-theme-name")
         self._set_safe_default_size()
 

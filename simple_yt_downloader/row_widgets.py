@@ -37,12 +37,21 @@ AUDIO_QUALITIES = [
 _ICON_FALLBACK_GLYPHS = {
     "media-playback-pause-symbolic": "⏸",
     "media-playback-start-symbolic": "▶",
-    "pan-down-symbolic": "▾",
+    "media-record-symbolic": "●",
+    "process-stop-symbolic": "■",
+    "view-refresh-symbolic": "⟳",
     "pan-up-symbolic": "▴",
+    "pan-down-symbolic": "▾",
     "window-close-symbolic": "✕",
+    "emblem-ok-symbolic": "✓",
+    "dialog-error-symbolic": "⚠",
     "folder-symbolic": "📁",
     "folder-download-symbolic": "⬇",
-    "emblem-ok-symbolic": "✓",
+    "emblem-system-symbolic": "⚙",
+    "weather-clear-symbolic": "☀",
+    "weather-clear-night-symbolic": "☾",
+    "go-previous-symbolic": "◀",
+    "image-missing": "🗔",
 }
 
 
