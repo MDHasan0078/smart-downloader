@@ -1,0 +1,51 @@
+name: Build Windows engine
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build engine binary
+        run: |
+          python -m venv core/.venv
+          core/.venv/Scripts/pip install --quiet pyinstaller
+          core/.venv/Scripts/pyinstaller core/build/windows/engine.spec --noconfirm `
+            --distpath core/build/dist --workpath core/build/_pyinstaller_windows
+        shell: pwsh
+
+      - name: Bundle yt-dlp + ffmpeg next to engine
+        run: |
+          $bundle = "core/build/dist/engine"
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$bundle/yt-dlp.exe"
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip" -OutFile "$env:TEMP/ffmpeg.zip"
+          Expand-Archive -Path "$env:TEMP/ffmpeg.zip" -DestinationPath "$env:TEMP/ffmpeg" -Force
+          Copy-Item "$env:TEMP/ffmpeg/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe" "$bundle/ffmpeg.exe"
+          Get-ChildItem $bundle
+        shell: pwsh
+
+      - name: Smoke test (ping + deps + metadata)
+        shell: bash
+        run: |
+          cd core/build/dist/engine
+          printf '{"id":1,"cmd":"ping"}\n' | ./engine.exe
+          printf '{"id":2,"cmd":"check_deps"}\n' | PATH="$PWD:$PATH" ./engine.exe
+          printf '{"id":3,"cmd":"get_info","url":"https://www.youtube.com/watch?v=jNQXAC9IVRw"}\n' \
+            | PATH="$PWD:$PATH" ./engine.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-windows
+          path: core/build/dist/engine
