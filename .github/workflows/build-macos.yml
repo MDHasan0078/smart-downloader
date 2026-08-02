@@ -1,0 +1,46 @@
+name: Build macOS engine
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build engine binary
+        run: |
+          python3 -m venv core/.venv
+          core/.venv/bin/pip install --quiet pyinstaller yt-dlp
+          core/.venv/bin/pyinstaller core/build/macos/engine.spec --noconfirm \
+            --distpath core/build/dist --workpath core/build/_pyinstaller_macos
+
+      - name: Bundle yt-dlp + ffmpeg next to engine
+        run: |
+          cp core/.venv/bin/yt-dlp core/build/dist/engine/yt-dlp
+          brew install ffmpeg
+          cp "$(brew --prefix ffmpeg)/bin/ffmpeg" core/build/dist/engine/ffmpeg
+          chmod +x core/build/dist/engine/yt-dlp core/build/dist/engine/ffmpeg
+
+      - name: Smoke test (ping + deps + metadata)
+        run: |
+          cd core/build/dist/engine
+          printf '{"id":1,"cmd":"ping"}\n' | ./engine
+          printf '{"id":2,"cmd":"check_deps"}\n' | PATH="$PWD:$PATH" ./engine
+          printf '{"id":3,"cmd":"get_info","url":"https://www.youtube.com/watch?v=jNQXAC9IVRw"}\n' \
+            | PATH="$PWD:$PATH" ./engine
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-macos
+          path: core/build/dist/engine
