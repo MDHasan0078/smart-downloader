@@ -1,4 +1,13 @@
-simple-yt-downloader (1.0.0) unstable; urgency=medium
+simple-yt-downloader (1.1.0) unstable; urgency=medium
+
+  * 35b4c7b Add release.sh and version-from-tag CI stamping
+  * f3c8821 Add macOS engine CI build (PyInstaller + bundled yt-dlp/ffmpeg)
+  * 71f777f Add core download engine (Phase 0) with JSONL protocol spike
+  * 6ee6045 Add v2 Flutter rewrite plan (Windows + macOS)
+  * 3000b94 Redesign action icons to Adwaita-compatible symbolic style
+  * e692dbc Bundle app icon theme so controls never render blank
+
+ -- MD. Mahmudul Hasan <mdhasan0078@users.noreply.github.com>  Sun, 02 Aug 2026 19:23:02 +0000simple-yt-downloader (1.0.0) unstable; urgency=medium
 
   * Initial 1.0.0 release.
   * Indigo Tonal redesign: layered cards, segmented pills, native accent.
