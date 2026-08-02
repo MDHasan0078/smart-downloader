@@ -51,8 +51,11 @@ jobs:
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { $iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" }
           $version = if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') { $matches[1] } else { "0.0.0" }
-          & $iscc "$env:GITHUB_WORKSPACE/core/build/windows/installer.iss" /DVERSION=$version
-          Get-ChildItem "$env:GITHUB_WORKSPACE/core/build/dist/*Setup.exe"
+          $bundle = "$env:GITHUB_WORKSPACE\core\build\dist\engine"
+          $output = "$env:GITHUB_WORKSPACE\core\build\dist"
+          & $iscc "$env:GITHUB_WORKSPACE/core/build/windows/installer.iss" `
+            /DVERSION=$version "/DBUNDLE=$bundle" "/DOUTPUT=$output"
+          Get-ChildItem "$output/*Setup.exe"
 
       - name: Upload engine artifact
         uses: actions/upload-artifact@v4

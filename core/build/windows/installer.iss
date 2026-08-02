@@ -3,10 +3,19 @@
 ; Build from repo root (CI does this):
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" core/build/windows/installer.iss /DVERSION=1.1.0
 ;
-; Output: core/build/dist/SimpleYTDownloader-<VERSION>-Setup.exe
+; BUNDLE/OUTPUT default to paths relative to this script's directory; CI
+; overrides them with absolute paths so resolution is unambiguous.
+;
+; Output: <OUTPUT>/SimpleYTDownloader-<VERSION>-Setup.exe
 
 #ifndef VERSION
   #define VERSION "0.0.0"
+#endif
+#ifndef BUNDLE
+  #define BUNDLE "..\..\dist\engine"
+#endif
+#ifndef OUTPUT
+  #define OUTPUT "..\..\dist"
 #endif
 
 #define MyAppName "Simple YT Downloader (Engine)"
@@ -21,9 +30,9 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\SimpleYTDownloader
 DefaultGroupName=Simple YT Downloader
 DisableProgramGroupPage=yes
-OutputDir=..\..\build\dist
+OutputDir={#OUTPUT}
 OutputBaseFilename=SimpleYTDownloader-{#MyAppVersion}-Setup
-SourceDir=..\..\build\dist\engine
+SourceDir={#BUNDLE}
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
