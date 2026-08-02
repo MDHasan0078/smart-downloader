@@ -15,6 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          sed -i "s/^Version: .*/Version: $VERSION/" packaging/control
+
       - name: Build .deb
         run: |
           chmod +x scripts/build_deb.sh
