@@ -1,4 +1,12 @@
-simple-yt-downloader (1.1.0) unstable; urgency=medium
+simple-yt-downloader (2.0.0) unstable; urgency=medium
+
+  * 83ab86e fix: copy all Windows release files in installer (no lib/ folder on Windows)
+  * e66392b feat: Flutter app scaffold with engine integration (Phase 2)
+  * fcb5ec0 Fix installer output path resolution via absolute defines
+  * e72b90c Add Windows Inno Setup installer to engine CI
+  * 6930221 Add Windows engine CI build (PyInstaller + bundled yt-dlp/ffmpeg)
+
+ -- MD. Mahmudul Hasan <mdhasan0078@users.noreply.github.com>  Tue, 04 Aug 2026 16:55:47 +0000simple-yt-downloader (1.1.0) unstable; urgency=medium
 
   * 35b4c7b Add release.sh and version-from-tag CI stamping
   * f3c8821 Add macOS engine CI build (PyInstaller + bundled yt-dlp/ffmpeg)
