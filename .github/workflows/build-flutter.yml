@@ -1,0 +1,147 @@
+name: Build Flutter app
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-flutter-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build engine binary
+        run: |
+          python -m venv core/.venv
+          core/.venv/Scripts/pip install --quiet pyinstaller
+          core/.venv/Scripts/pyinstaller core/build/windows/engine.spec --noconfirm `
+            --distpath core/build/dist --workpath core/build/_pyinstaller_windows
+        shell: pwsh
+
+      - name: Bundle yt-dlp + ffmpeg next to engine
+        run: |
+          $bundle = "core/build/dist/engine"
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$bundle/yt-dlp.exe"
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip" -OutFile "$env:TEMP/ffmpeg.zip"
+          Expand-Archive -Path "$env:TEMP/ffmpeg.zip" -DestinationPath "$env:TEMP/ffmpeg" -Force
+          Copy-Item "$env:TEMP/ffmpeg/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe" "$bundle/ffmpeg.exe"
+        shell: pwsh
+
+      - name: Flutter pub get
+        run: flutter pub get
+        working-directory: app
+
+      - name: Build Flutter app (Windows)
+        run: flutter build windows --release
+        working-directory: app
+
+      - name: Bundle engine into app
+        run: |
+          $releaseDir = "app/build/windows/x64/runner/Release"
+          Copy-Item -Recurse -Force "core/build/dist/engine" "$releaseDir/engine"
+          Get-ChildItem $releaseDir
+
+      - name: Build Inno Setup installer
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" }
+          $version = if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') { $matches[1] } else { "0.0.0" }
+          $bundle = "$env:GITHUB_WORKSPACE\app\build\windows\x64\runner\Release"
+          $output = "$env:GITHUB_WORKSPACE\app\build"
+          $icon = "$env:GITHUB_WORKSPACE\app\windows\runner\resources\app_icon.ico"
+          & $iscc "$env:GITHUB_WORKSPACE/app/windows/installer.iss" `
+            /DVERSION=$version "/DBUNDLE=$bundle" "/DOUTPUT=$output" "/DICON=$icon"
+          Get-ChildItem "$output/*Setup.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-downloader-windows
+          path: app/build/*Setup.exe
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "app/build/*Setup.exe"
+
+  build-flutter-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build engine binary
+        run: |
+          python3 -m venv core/.venv
+          core/.venv/bin/pip install --quiet pyinstaller yt-dlp
+          core/.venv/bin/pyinstaller core/build/macos/engine.spec --noconfirm \
+            --distpath core/build/dist --workpath core/build/_pyinstaller_macos
+
+      - name: Bundle yt-dlp + ffmpeg next to engine
+        run: |
+          cp core/.venv/bin/yt-dlp core/build/dist/engine/yt-dlp
+          brew install ffmpeg
+          cp "$(brew --prefix ffmpeg)/bin/ffmpeg" core/build/dist/engine/ffmpeg
+          chmod +x core/build/dist/engine/yt-dlp core/build/dist/engine/ffmpeg
+
+      - name: Flutter pub get
+        run: flutter pub get
+        working-directory: app
+
+      - name: Build Flutter app (macOS)
+        run: flutter build macos --release
+        working-directory: app
+
+      - name: Bundle engine into .app
+        run: |
+          APP="app/build/macos/Build/Products/Release/smart_downloader.app"
+          mkdir -p "$APP/Contents/Resources/engine"
+          cp -R core/build/dist/engine/* "$APP/Contents/Resources/engine/"
+          chmod +x "$APP/Contents/Resources/engine/engine"
+          plutil -replace CFBundleName -string "Smart Downloader" "$APP/Contents/Info.plist"
+          plutil -replace CFBundleDisplayName -string "Smart Downloader" "$APP/Contents/Info.plist"
+
+      - name: Create .dmg
+        run: |
+          cd app/build/macos/Build/Products
+          mkdir -p dmg-root
+          cp -R "Release/smart_downloader.app" dmg-root/
+          ln -s /Applications dmg-root/Applications
+          hdiutil create -volname "Smart Downloader" -srcfolder dmg-root \
+            -ov -format UDZO "SmartDownloader.dmg"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-downloader-macos
+          path: app/build/macos/Build/Products/SmartDownloader.dmg
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "app/build/macos/Build/Products/SmartDownloader.dmg"
