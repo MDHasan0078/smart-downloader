@@ -1,3 +1,18 @@
+simple-yt-downloader (2.2.0) unstable; urgency=medium
+
+  * 818a6bc fix: Flutter About falls back to 'Unknown' instead of hardcoded version
+  * 3af43b2 refactor: drop Settings download-folder row (folder picker stays pinned)
+  * d21d646 fix: swallow wheel scroll on combos; tint cancel icons with error red
+  * 0b9b902 feat: per-row custom video quality and fps selection
+  * d366549 docs: drop yt-dlp/ffmpeg from description, mention custom resolution
+  * 4e692cb docs: rewrite description around quality/FPS/open-source/lightweight/fast
+  * 2216097 feat: drop 'System' theme; dark is the default
+  * 5b3998c feat: phase-aware download status labels (Downloading video/audio, Merging)
+  * afef8f0 feat: one-click auto-update for the Flutter app (macOS/Windows)
+  * 5113023 feat: one-click in-app auto-update for Linux (check, download, install via pkexec)
+  * 181bb70 ci: fix deb smoke test (dpkg-deb -I indents fields; use -f)
+
+ -- MD. Mahmudul Hasan <mdhasan0078@users.noreply.github.com>  Wed, 05 Aug 2026 14:30:00 +0000
 simple-yt-downloader (2.1.0) unstable; urgency=medium
 
   * 5fb4282 feat: dark/light theme toggle and manual update check
