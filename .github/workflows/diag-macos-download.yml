@@ -1,0 +1,70 @@
+name: Diagnose macOS lame download
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Environment basics
+        run: |
+          echo "== df =="; df -h / /private/tmp "$RUNNER_TEMP" 2>&1
+          echo "== ulimit -a =="; ulimit -a
+          echo "== curl =="; curl --version
+          echo "== type =="; type -a curl
+          echo "RUNNER_TEMP=$RUNNER_TEMP"
+          echo "== dd write test (100MB to RUNNER_TEMP) =="
+          dd if=/dev/zero of="$RUNNER_TEMP/ddtest.bin" bs=1M count=100 2>&1 && ls -l "$RUNNER_TEMP/ddtest.bin"
+          rm -f "$RUNNER_TEMP/ddtest.bin"
+
+      - name: Download from github.com (control, known-good)
+        run: |
+          curl -v -L -o "$RUNNER_TEMP/ytdlp.bin" \
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" \
+            -w "http_code=%{http_code} size=%{size_download}\n" 2>&1 | tail -8
+          ls -l "$RUNNER_TEMP/ytdlp.bin"
+          rm -f "$RUNNER_TEMP/ytdlp.bin"
+
+      - name: Download lame from archive.ubuntu.com (verbose)
+        run: |
+          rm -f "$RUNNER_TEMP/t-ubuntu.bin" "$RUNNER_TEMP/curl-ubuntu.log"
+          curl -v -L -o "$RUNNER_TEMP/t-ubuntu.bin" \
+            "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/lame_3.100.orig.tar.gz" \
+            -w "http_code=%{http_code} size=%{size_download} errormsg=%{errormsg}\n" \
+            2>&1 | tee "$RUNNER_TEMP/curl-ubuntu.log"
+          echo "== result file =="
+          ls -l "$RUNNER_TEMP/t-ubuntu.bin" 2>&1
+          file "$RUNNER_TEMP/t-ubuntu.bin" 2>&1
+          echo "== first 80 bytes =="
+          head -c 80 "$RUNNER_TEMP/t-ubuntu.bin" 2>&1 | xxd
+
+      - name: Download lame from deb.debian.org
+        run: |
+          rm -f "$RUNNER_TEMP/t-debian.bin"
+          curl -v -L -o "$RUNNER_TEMP/t-debian.bin" \
+            "https://deb.debian.org/debian/pool/main/l/lame/lame_3.100.orig.tar.gz" \
+            -w "http_code=%{http_code} size=%{size_download} errormsg=%{errormsg}\n" 2>&1 | tail -6
+          ls -l "$RUNNER_TEMP/t-debian.bin" 2>&1
+
+      - name: Download lame forcing HTTP/1.1
+        run: |
+          rm -f "$RUNNER_TEMP/t-http11.bin"
+          curl --http1.1 -L -o "$RUNNER_TEMP/t-http11.bin" \
+            "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/lame_3.100.orig.tar.gz" \
+            -w "http_code=%{http_code} size=%{size_download} errormsg=%{errormsg}\n" 2>&1 | tail -6
+          ls -l "$RUNNER_TEMP/t-http11.bin" 2>&1
+
+      - name: Download lame with python3 urllib
+        run: |
+          python3 - <<'EOF'
+          import urllib.request, os
+          url = "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/lame_3.100.orig.tar.gz"
+          with urllib.request.urlopen(url, timeout=60) as r:
+              data = r.read()
+          print("python3 got", len(data), "bytes")
+          open("/tmp/t-python.bin", "wb").write(data)
+          print("written", os.path.getsize("/tmp/t-python.bin"))
+          EOF
