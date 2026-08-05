@@ -11,7 +11,8 @@
 #   build_ffmpeg.sh <src_dir> <prefix_dir>
 #
 #   src_dir   directory where the ffmpeg source will be cloned (created if
-#             missing). A shallow clone is fetched from git.ffmpeg.org.
+#             missing). A shallow clone is fetched from the GitHub mirror
+#             (fallback: git.ffmpeg.org).
 #   prefix_dir  installation prefix; ffmpeg + ffprobe land in $prefix/bin.
 #
 # Examples:
@@ -30,7 +31,19 @@ set -euo pipefail
 SRC_DIR="${1:?usage: build_ffmpeg.sh <src_dir> <prefix_dir>}"
 PREFIX="${2:?usage: build_ffmpeg.sh <src_dir> <prefix_dir>}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
-FFMPEG_TAG="${FFMPEG_TAG:-master}"
+FFMPEG_TAG="${FFMPEG_TAG:-n7.1.1}"
+FFMPEG_REPO="${FFMPEG_REPO:-https://github.com/FFmpeg/FFmpeg}"
+FFMPEG_REPO_FALLBACK="${FFMPEG_REPO_FALLBACK:-https://git.ffmpeg.org/ffmpeg}"
+
+# Download with retries; on failure, try the fallback mirror. Any remaining
+# error propagates and aborts the build (set -e).
+download_tarball() {
+  local primary="$1" fallback="$2" dest="$3"
+  if ! curl -fsSL --retry 3 --retry-delay 2 -o "$dest" "$primary"; then
+    echo "warning: $primary failed, trying fallback $fallback" >&2
+    curl -fsSL --retry 3 --retry-delay 2 -o "$dest" "$fallback"
+  fi
+}
 
 EXTRA_CFLAGS=""
 EXTRA_LDFLAGS=""
@@ -42,8 +55,10 @@ if [ "$(uname -s)" = "Darwin" ]; then
   mkdir -p "$DEPS_PREFIX"
 
   if [ ! -f "$DEPS_PREFIX/lib/libmp3lame.a" ]; then
-    curl -fsSL -o "$SRC_DIR/../lame-3.100.tar.gz" \
-      "https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz"
+    download_tarball \
+      "https://downloads.sourceforge.net/lame/lame-3.100.tar.gz" \
+      "https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz/download" \
+      "$SRC_DIR/../lame-3.100.tar.gz"
     tar -xzf "$SRC_DIR/../lame-3.100.tar.gz" -C "$SRC_DIR/.."
     (
       cd "$SRC_DIR/../lame-3.100"
@@ -54,8 +69,10 @@ if [ "$(uname -s)" = "Darwin" ]; then
   fi
 
   if [ ! -f "$DEPS_PREFIX/lib/libopus.a" ]; then
-    curl -fsSL -o "$SRC_DIR/../opus-1.5.2.tar.gz" \
-      "https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz"
+    download_tarball \
+      "https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz" \
+      "https://github.com/xiph/opus/releases/download/v1.5.2/opus-1.5.2.tar.gz" \
+      "$SRC_DIR/../opus-1.5.2.tar.gz"
     tar -xzf "$SRC_DIR/../opus-1.5.2.tar.gz" -C "$SRC_DIR/.."
     (
       cd "$SRC_DIR/../opus-1.5.2"
@@ -71,7 +88,11 @@ if [ "$(uname -s)" = "Darwin" ]; then
 fi
 
 if [ ! -d "$SRC_DIR/.git" ]; then
-  git clone --depth 1 --branch "$FFMPEG_TAG" https://git.ffmpeg.org/ffmpeg "$SRC_DIR"
+  if ! git clone --depth 1 --branch "$FFMPEG_TAG" "$FFMPEG_REPO" "$SRC_DIR"; then
+    echo "warning: clone from $FFMPEG_REPO failed, trying fallback $FFMPEG_REPO_FALLBACK" >&2
+    rm -rf "$SRC_DIR"
+    git clone --depth 1 --branch "$FFMPEG_TAG" "$FFMPEG_REPO_FALLBACK" "$SRC_DIR"
+  fi
 fi
 
 cd "$SRC_DIR"
