@@ -28,7 +28,7 @@ jobs:
 
       - name: Smoke test .deb contents
         run: |
-          dpkg-deb -I *.deb | grep -E "^(Package|Version|Architecture|Depends):"
+          dpkg-deb -f *.deb Package Version Architecture Depends
           dpkg-deb -c *.deb | grep -E "(usr/bin/simple-yt-downloader|usr/lib/simple-yt-downloader/)" | head -5
 
       - name: Upload build artifact
