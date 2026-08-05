@@ -2,8 +2,9 @@
 
 [![Latest release](https://img.shields.io/github/v/release/MDHasan0078/smart-downloader?label=latest)](https://github.com/MDHasan0078/smart-downloader/releases)
 
-A lightweight GTK3 desktop app for downloading YouTube videos, audio, and
-playlists — built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+Smart Downloader — a fast, lightweight, open-source YouTube downloader.
+Every quality from 144p to 10K, selectable 30/60/90 fps, playlist support
+and pause/resume. Built on [yt-dlp](https://github.com/yt-dlp/yt-dlp) + ffmpeg.
 
 Single persistent window, no popup-dialog chains. Runs on Debian/Ubuntu-based
 Linux distros (tested on Linux Mint).
@@ -26,7 +27,7 @@ Linux distros (tested on Linux Mint).
 - **Ongoing / Completed** tabs (session-only) with a one-click "Clear All"
 - Inline collapsible, auto-scrolling logs per download
 - Settings: cookies file, download folder (also pinned to the main window
-  for quick access), default video/audio format & quality, Light/Dark/System
+  for quick access), default video/audio format & quality, Light/Dark
   theme, and a built-in dependency checker with a one-click "Fix
   Dependencies" button
 - **Check for Updates** (Settings → About) — queries the GitHub releases API
@@ -83,7 +84,7 @@ Produces `simple-yt-downloader_<version>_all.deb` in the repo root.
 ```
 simple_yt_downloader/     the actual application (Python + GTK3)
   app.py                main window, headerbar, tabs, multi-URL add flow,
-                         first-run flow, Light/Dark/System theme forcing
+                         first-run flow, Light/Dark theme forcing
   row_widgets.py         VideoRow / PlaylistRow / the quality dropdown bar,
                          icon-fallback helpers, retry/hold/pause logic
   download_task.py       wraps a single yt-dlp subprocess: probing,

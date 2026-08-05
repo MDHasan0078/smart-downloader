@@ -6,7 +6,7 @@ Architecture: all
 Maintainer: MD. Mahmudul Hasan
 Homepage: https://github.com/MDHasan0078/smart-downloader
 Depends: python3, python3-gi, gir1.2-gtk-3.0, yt-dlp, ffmpeg, policykit-1
-Description: Lightweight GTK3 GUI for downloading YouTube videos, audio, and playlists.
- A clean, single-window GTK3 desktop app for downloading YouTube videos,
- audio, and playlists with pause/resume support. Built on yt-dlp and
- ffmpeg, with a dependency checker and in-app dependency fixes.
+Description: Fast, lightweight, open-source YouTube downloader.
+ Smart Downloader is a fast, lightweight, open-source YouTube downloader.
+ Every quality from 144p to 10K, selectable 30/60/90 fps, playlist support
+ and pause/resume. Built on yt-dlp + ffmpeg.

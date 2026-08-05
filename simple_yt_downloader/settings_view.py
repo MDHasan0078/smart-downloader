@@ -180,8 +180,10 @@ class SettingsView(Gtk.Box):
         header.pack_start(title_box, True, True, 0)
         card.pack_start(header, False, False, 0)
 
-        desc = Gtk.Label(label="A lightweight GTK3 desktop app for downloading "
-                               "YouTube videos, audio, and playlists.")
+        desc = Gtk.Label(label="Smart Downloader — a fast, lightweight, open-source "
+                               "YouTube downloader. Every quality from 144p to 10K, "
+                               "selectable 30/60/90 fps, playlist support and "
+                               "pause/resume. Built on yt-dlp + ffmpeg.")
         desc.set_xalign(0)
         desc.set_line_wrap(True)
         desc.get_style_context().add_class("about-desc")
