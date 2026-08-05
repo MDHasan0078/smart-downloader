@@ -53,6 +53,9 @@ EXTRA_LDFLAGS=""
 if [ "$(uname -s)" = "Darwin" ]; then
   DEPS_PREFIX="$PREFIX/deps"
   mkdir -p "$DEPS_PREFIX"
+  # Create $SRC_DIR before downloading so "$SRC_DIR/../" resolves (the clone
+  # below creates it otherwise, but downloads need it to exist first).
+  mkdir -p "$SRC_DIR"
 
   if [ ! -f "$DEPS_PREFIX/lib/libmp3lame.a" ]; then
     download_tarball \
