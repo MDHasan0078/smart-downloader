@@ -20,7 +20,7 @@ DEFAULTS = {
     "default_video_quality": "720",
     "default_audio_format": "mp3",
     "default_audio_quality": "192",
-    "theme": "system",  # "light" | "dark" | "system"
+    "theme": "dark",  # "light" | "dark"
     "first_run_done": False,
 }
 
@@ -51,7 +51,7 @@ def _sanitize(settings):
     KeyError, and an empty download_dir made DownloadTask call
     os.makedirs("") when starting a download.
     """
-    if settings.get("theme") not in ("light", "dark", "system"):
+    if settings.get("theme") not in ("light", "dark"):
         settings["theme"] = DEFAULTS["theme"]
     if not isinstance(settings.get("download_dir"), str) or not settings["download_dir"].strip():
         settings["download_dir"] = DEFAULTS["download_dir"]

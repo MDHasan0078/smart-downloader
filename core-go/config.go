@@ -42,7 +42,7 @@ var defaults = map[string]interface{}{
 	"default_video_quality": "720",
 	"default_audio_format":  "mp3",
 	"default_audio_quality": "192",
-	"theme":                 "system",
+	"theme":                 "dark",
 	"first_run_done":        false,
 }
 
@@ -72,7 +72,7 @@ func loadSettings() map[string]interface{} {
 
 func sanitizeSettings(s map[string]interface{}) {
 	theme, _ := s["theme"].(string)
-	if theme != "light" && theme != "dark" && theme != "system" {
+	if theme != "light" && theme != "dark" {
 		s["theme"] = defaults["theme"]
 	}
 	dir, _ := s["download_dir"].(string)

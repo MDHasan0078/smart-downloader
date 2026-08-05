@@ -132,12 +132,12 @@ class SettingsView(Gtk.Box):
         theme_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         theme_row.get_style_context().add_class("linked")
         self.theme_buttons = {}
-        for key, label in [("light", "Light"), ("dark", "Dark"), ("system", "System")]:
+        for key, label in [("light", "Light"), ("dark", "Dark")]:
             btn = Gtk.ToggleButton(label=label)
             btn.connect("toggled", self._on_theme_toggled, key)
             theme_row.pack_start(btn, False, False, 0)
             self.theme_buttons[key] = btn
-        self.theme_buttons[self.settings.get("theme", "system")].set_active(True)
+        self.theme_buttons[self.settings.get("theme", "dark")].set_active(True)
         self.pack_start(theme_row, False, False, 0)
 
         self.pack_start(self._section("Dependencies"), False, False, 0)

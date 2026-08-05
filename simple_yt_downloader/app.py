@@ -28,11 +28,10 @@ class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title=APP_TITLE)
         icons.register_bundled_icons()
-        self._original_theme_name = Gtk.Settings.get_default().get_property("gtk-theme-name")
         self._set_safe_default_size()
 
         self.settings = config_module.load()
-        self._apply_theme(self.settings.get("theme", "system"))
+        self._apply_theme(self.settings.get("theme", "dark"))
         style.apply()
 
         self._build_headerbar()
@@ -98,7 +97,7 @@ class MainWindow(Gtk.ApplicationWindow):
         header.pack_end(settings_btn)
 
     def _update_theme_icon(self):
-        theme = self.settings.get("theme", "system")
+        theme = self.settings.get("theme", "dark")
         icon = "weather-clear-symbolic" if theme == "light" else "weather-clear-night-symbolic"
         child = self.theme_btn.get_child()
         if child:
@@ -107,8 +106,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.theme_btn.show_all()
 
     def _on_theme_button_clicked(self, _btn):
-        current = self.settings.get("theme", "system")
-        new_theme = "dark" if current in ("light", "system") else "light"
+        current = self.settings.get("theme", "dark")
+        new_theme = "light" if current == "dark" else "dark"
         self.settings["theme"] = new_theme
         config_module.save(self.settings)
         self._apply_theme(new_theme)
@@ -124,18 +123,13 @@ class MainWindow(Gtk.ApplicationWindow):
 
         Adwaita ships as part of GTK3 itself (a dependency of libgtk-3-0),
         so it's guaranteed present regardless of the user's desktop theme.
-        "System" mode restores whatever theme was active before the app
-        touched anything, captured once at startup.
         """
         gtk_settings = Gtk.Settings.get_default()
         if theme == "dark":
             gtk_settings.set_property("gtk-theme-name", "Adwaita")
             gtk_settings.set_property("gtk-application-prefer-dark-theme", True)
-        elif theme == "light":
+        else:  # light
             gtk_settings.set_property("gtk-theme-name", "Adwaita")
-            gtk_settings.set_property("gtk-application-prefer-dark-theme", False)
-        else:  # system
-            gtk_settings.set_property("gtk-theme-name", self._original_theme_name)
             gtk_settings.set_property("gtk-application-prefer-dark-theme", False)
         style.reload()
 
