@@ -26,10 +26,11 @@ Linux distros (tested on Linux Mint).
   serialized to avoid ffmpeg conflicts when two videos finish at once
 - **Ongoing / Completed** tabs (session-only) with a one-click "Clear All"
 - Inline collapsible, auto-scrolling logs per download
-- Settings: cookies file, download folder (also pinned to the main window
-  for quick access), default video/audio format & quality, Light/Dark
+- Settings: cookies file, default video/audio format & quality, Light/Dark
   theme, and a built-in dependency checker with a one-click "Fix
   Dependencies" button
+- Download-folder picker pinned to the main window (defaults to
+  `~/Downloads`)
 - **Check for Updates** (Settings → About) — queries the GitHub releases API
   in the background and offers to **Download & Install** the latest version
   for your platform: `.deb` via `pkexec` on Linux, silent installer on

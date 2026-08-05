@@ -426,7 +426,8 @@ class MainWindow(Gtk.ApplicationWindow):
             )
             dialog.format_secondary_text(
                 "Let's quickly check that everything needed is installed, "
-                "and you can set your cookies file and download folder in Settings."
+                "and you can set your cookies file in Settings and your "
+                "download folder from the bar at the bottom of the window."
             )
             dialog.run()
             dialog.destroy()

@@ -24,6 +24,7 @@ from .row_widgets import (
     VIDEO_FORMATS,
     VIDEO_QUALITIES,
     _icon_theme_has,
+    _swallow_combo_scroll,
 )
 
 STATIC_DEPS = ["python3", "python3-gi", "gir1.2-gtk-3.0"]
@@ -86,18 +87,6 @@ class SettingsView(Gtk.Box):
         self.use_cookies_check.set_active(self.settings.get("use_cookies", False))
         self.pack_start(self.use_cookies_check, False, False, 0)
 
-        self.pack_start(self._section("Download folder"), False, False, 0)
-        folder_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        self.folder_entry = Gtk.Entry()
-        self.folder_entry.set_text(self.settings.get("download_dir", ""))
-        self.folder_entry.set_editable(False)
-        folder_row.pack_start(self.folder_entry, True, True, 0)
-        folder_btn = Gtk.Button()
-        folder_btn.add(Gtk.Image.new_from_icon_name("folder-symbolic", Gtk.IconSize.BUTTON))
-        folder_btn.connect("clicked", self._on_browse_folder)
-        folder_row.pack_start(folder_btn, False, False, 0)
-        self.pack_start(folder_row, False, False, 0)
-
         self.pack_start(self._section("Default video format & quality"), False, False, 0)
         vrow = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.vfmt_combo = Gtk.ComboBoxText()
@@ -109,6 +98,8 @@ class SettingsView(Gtk.Box):
         for value, display in VIDEO_QUALITIES:
             self.vqual_combo.append(value, display)
         self.vqual_combo.set_active_id(self.settings.get("default_video_quality", "720"))
+        _swallow_combo_scroll(self.vfmt_combo)
+        _swallow_combo_scroll(self.vqual_combo)
         vrow.pack_start(self.vfmt_combo, True, True, 0)
         vrow.pack_start(self.vqual_combo, True, True, 0)
         self.pack_start(vrow, False, False, 0)
@@ -124,6 +115,8 @@ class SettingsView(Gtk.Box):
         for value, display in AUDIO_QUALITIES:
             self.aqual_combo.append(value, display)
         self.aqual_combo.set_active_id(self.settings.get("default_audio_quality", "192"))
+        _swallow_combo_scroll(self.afmt_combo)
+        _swallow_combo_scroll(self.aqual_combo)
         arow.pack_start(self.afmt_combo, True, True, 0)
         arow.pack_start(self.aqual_combo, True, True, 0)
         self.pack_start(arow, False, False, 0)
@@ -419,22 +412,12 @@ class SettingsView(Gtk.Box):
 
     def _on_browse_cookies(self, _btn):
         dialog = Gtk.FileChooserDialog(
-            title="Select cookies.txt file", parent=self.get_toplevel(),
+            title="Choose cookies file", parent=self.get_toplevel(),
             action=Gtk.FileChooserAction.OPEN,
         )
         dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK)
         if dialog.run() == Gtk.ResponseType.OK:
             self.cookies_entry.set_text(dialog.get_filename())
-        dialog.destroy()
-
-    def _on_browse_folder(self, _btn):
-        dialog = Gtk.FileChooserDialog(
-            title="Choose download folder", parent=self.get_toplevel(),
-            action=Gtk.FileChooserAction.SELECT_FOLDER,
-        )
-        dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK)
-        if dialog.run() == Gtk.ResponseType.OK:
-            self.folder_entry.set_text(dialog.get_filename())
         dialog.destroy()
 
     def _on_theme_toggled(self, btn, key):
@@ -449,7 +432,6 @@ class SettingsView(Gtk.Box):
     def _on_save(self, _btn):
         self.settings["cookies_file"] = self.cookies_entry.get_text()
         self.settings["use_cookies"] = self.use_cookies_check.get_active()
-        self.settings["download_dir"] = self.folder_entry.get_text()
         self.settings["default_video_format"] = (self.vfmt_combo.get_active_text() or "mp4").lower()
         self.settings["default_video_quality"] = self.vqual_combo.get_active_id() or "720"
         self.settings["default_audio_format"] = (self.afmt_combo.get_active_text() or "mp3").lower()
