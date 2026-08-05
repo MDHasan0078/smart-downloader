@@ -61,33 +61,8 @@ jobs:
           printf '{"id":3,"cmd":"get_info","url":"https://www.youtube.com/watch?v=jNQXAC9IVRw"}\n' \
             | ./engine.exe
 
-      - name: Build Inno Setup installer
-        shell: pwsh
-        run: |
-          choco install innosetup --yes --no-progress
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { $iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" }
-          $version = if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') { $matches[1] } else { "0.0.0" }
-          $bundle = "$env:GITHUB_WORKSPACE\core\build\dist\engine"
-          $output = "$env:GITHUB_WORKSPACE\core\build\dist"
-          & $iscc "$env:GITHUB_WORKSPACE/core/build/windows/installer.iss" `
-            /DVERSION=$version "/DBUNDLE=$bundle" "/DOUTPUT=$output"
-          Get-ChildItem "$output/*Setup.exe"
-
       - name: Upload engine artifact
         uses: actions/upload-artifact@v4
         with:
           name: engine-windows
           path: core/build/dist/engine
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: simple-yt-downloader-windows-setup
-          path: core/build/dist/*Setup.exe
-
-      - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: "core/build/dist/*Setup.exe"

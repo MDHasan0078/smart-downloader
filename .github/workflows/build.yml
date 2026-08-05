@@ -26,6 +26,11 @@ jobs:
           chmod +x scripts/build_deb.sh
           ./scripts/build_deb.sh
 
+      - name: Smoke test .deb contents
+        run: |
+          dpkg-deb -I *.deb | grep -E "^(Package|Version|Architecture|Depends):"
+          dpkg-deb -c *.deb | grep -E "(usr/bin/simple-yt-downloader|usr/lib/simple-yt-downloader/)" | head -5
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:

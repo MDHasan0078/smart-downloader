@@ -83,6 +83,27 @@ jobs:
             /DVERSION=$version "/DBUNDLE=$bundle" "/DOUTPUT=$output" "/DICON=$icon"
           Get-ChildItem "$output/*Setup.exe"
 
+      - name: Smoke test installer (silent install)
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem "$env:GITHUB_WORKSPACE/app/build/*Setup.exe" | Select-Object -First 1
+          if (-not $setup) { Write-Error "No Setup.exe produced"; exit 1 }
+          $target = Join-Path $env:TEMP "sdtest"
+          Write-Host "Installing $($setup.FullName) -> $target"
+          Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$target" -Wait
+          $required = @(
+            "$target\smart_downloader.exe",
+            "$target\engine\engine.exe",
+            "$target\engine\yt-dlp.exe",
+            "$target\engine\ffmpeg.exe",
+            "$target\engine\ffprobe.exe"
+          )
+          foreach ($f in $required) {
+            if (-not (Test-Path $f)) { Write-Error "Missing after install: $f"; exit 1 }
+            Write-Host "OK: $f"
+          }
+          printf '{"id":1,"cmd":"ping"}\n' | & "$target\engine\engine.exe"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -148,6 +169,21 @@ jobs:
           ln -s /Applications dmg-root/Applications
           hdiutil create -volname "Smart Downloader" -srcfolder dmg-root \
             -ov -format UDZO "SmartDownloader.dmg"
+
+      - name: Smoke test dmg contents
+        run: |
+          cd app/build/macos/Build/Products
+          hdiutil attach -nobrowse -mountpoint /tmp/sd-dmg SmartDownloader.dmg
+          APP="/tmp/sd-dmg/Smart Downloader.app"
+          for f in engine/engine engine/ffmpeg engine/ffprobe engine/yt-dlp; do
+            if [ ! -x "$APP/Contents/Resources/$f" ]; then
+              echo "missing: $f"
+              hdiutil detach /tmp/sd-dmg
+              exit 1
+            fi
+            echo "OK: $APP/Contents/Resources/$f"
+          done
+          hdiutil detach /tmp/sd-dmg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
