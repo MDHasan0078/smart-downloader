@@ -1,3 +1,10 @@
+simple-yt-downloader (2.1.0) unstable; urgency=medium
+
+  * 5fb4282 feat: dark/light theme toggle and manual update check
+  * 0cf2fd2 ci: build Go engine in all packaging workflows
+  * 19fd8e4 feat: replace PyInstaller engine with native Go engine
+
+ -- MD. Mahmudul Hasan <mdhasan0078@users.noreply.github.com>  Wed, 05 Aug 2026 12:00:00 +0000
 simple-yt-downloader (2.0.0) unstable; urgency=medium
 
   * 83ab86e fix: copy all Windows release files in installer (no lib/ folder on Windows)

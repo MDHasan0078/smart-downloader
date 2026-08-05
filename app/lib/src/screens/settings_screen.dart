@@ -212,7 +212,7 @@ class SettingsScreen extends StatelessWidget {
                       FutureBuilder<PackageInfo>(
                         future: _packageInfoFuture,
                         builder: (context, snapshot) {
-                          final version = snapshot.data?.version ?? '2.0.0';
+                          final version = snapshot.data?.version ?? '2.1.0';
                           return _buildInfoRow(
                             context,
                             icon: Icons.apps,

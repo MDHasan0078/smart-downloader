@@ -2,12 +2,12 @@
 ; BUNDLE points to the Flutter release folder (app/build/windows/x64/runner/Release),
 ; which contains smart_downloader.exe, data/, lib/, and engine/.
 ; Build from CI:
-;   ISCC.exe app/build/windows/installer.iss /DVERSION=2.0.0 /DBUNDLE=<release> /DOUTPUT=<out>
+;   ISCC.exe app/build/windows/installer.iss /DVERSION=2.1.0 /DBUNDLE=<release> /DOUTPUT=<out>
 ;
 ; Output: <OUTPUT>/SmartDownloader-<VERSION>-Setup.exe
 
 #ifndef VERSION
-  #define VERSION "2.0.0"
+  #define VERSION "2.1.0"
 #endif
 #ifndef BUNDLE
   #define BUNDLE "..\build\windows\x64\runner\Release"
