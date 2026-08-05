@@ -49,7 +49,7 @@ class EngineLocator {
 
     throw Exception(
       'Engine binary not found. Build it first:\n'
-      '  python -m PyInstaller core/build/${Platform.isWindows ? 'windows' : Platform.isMacOS ? 'macos' : 'linux'}/engine.spec',
+      '  cd core-go && go build -o ../core/build/dist/engine/engine${Platform.isWindows ? '.exe' : ''} .',
     );
   }
 }

@@ -1,14 +1,14 @@
 """Dependency detection for the downloader engine (cross-platform).
 
-yt-dlp and ffmpeg are the two external binaries the engine shells out to at
-runtime. On desktop installs both ship bundled next to the app; this module
+yt-dlp and ffmpeg/ffprobe are the external binaries the engine shells out to at
+runtime. On desktop installs all three ship bundled next to the app; this module
 reports presence/version so the UI can guide the user if they're missing.
 """
 
 import shutil
 import subprocess
 
-CHECKED_BINARIES = ["yt-dlp", "ffmpeg"]
+CHECKED_BINARIES = ["yt-dlp", "ffmpeg", "ffprobe"]
 
 
 def check_binary(name):

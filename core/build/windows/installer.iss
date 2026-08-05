@@ -1,5 +1,5 @@
 ; Inno Setup script: Simple YT Downloader (engine) Windows installer.
-; Sources resolve relative to the PyInstaller bundle in core/build/dist/engine.
+; Sources resolve relative to the Go engine bundle in core/build/dist/engine.
 ; Build from repo root (CI does this):
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" core/build/windows/installer.iss /DVERSION=1.1.0
 ;
@@ -44,3 +44,4 @@ UninstallDisplayName=Simple YT Downloader (Engine)
 Source: "engine.exe"; DestDir: "{app}\bin"
 Source: "yt-dlp.exe"; DestDir: "{app}\bin"
 Source: "ffmpeg.exe"; DestDir: "{app}\bin"
+Source: "ffprobe.exe"; DestDir: "{app}\bin"
