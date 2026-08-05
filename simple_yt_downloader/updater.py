@@ -17,7 +17,10 @@ import urllib.error
 import urllib.request
 
 REPO = "MDHasan0078/smart-downloader"
-RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
+RELEASE_API = os.environ.get(
+    "SMART_DOWNLOADER_RELEASE_API",
+    f"https://api.github.com/repos/{REPO}/releases/latest",
+)
 RELEASE_DOWNLOAD_BASE = f"https://github.com/{REPO}/releases/download"
 USER_AGENT = "simple-yt-downloader"
 
