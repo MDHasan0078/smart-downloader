@@ -47,6 +47,11 @@ download_tarball() {
 
 EXTRA_CFLAGS=""
 EXTRA_LDFLAGS=""
+EXTRA_LIBS=""
+
+if [ -n "${MSYSTEM:-}" ] && [ -n "${MSYSTEM_PREFIX:-}" ]; then
+  EXTRA_LIBS="-static-libgcc -static-libwinpthread"
+fi
 
 # macOS: Homebrew lame/opus are dylibs (leak onto brew Cellar paths). Build
 # static archives from source so the ffmpeg binary is self-contained.
@@ -101,6 +106,7 @@ cd "$SRC_DIR"
   --prefix="$PREFIX" \
   --extra-cflags="$EXTRA_CFLAGS" \
   --extra-ldflags="$EXTRA_LDFLAGS" \
+  --extra-libs="$EXTRA_LIBS" \
   --prefix="$PREFIX" \
   --disable-everything \
   --disable-doc \
@@ -131,6 +137,33 @@ cd "$SRC_DIR"
 
 make -j"$JOBS"
 make install
+
+if [ -n "${MSYSTEM_PREFIX:-}" ]; then
+  # Copy any MSYS2 runtime DLLs ffmpeg/ffprobe depend on (gcc, winpthread,
+  # lame, opus, ...) next to the binaries so they run outside the MSYS2
+  # shell, e.g. the GitHub runner smoke test or an end-user's machine.
+  copy_msys_dlls() {
+    local bin="$1" sys_bin="$2" exe dll dest
+    local -a queue=("$bin/ffmpeg.exe" "$bin/ffprobe.exe")
+    local -A seen=()
+    while ((${#queue[@]})); do
+      exe="${queue[0]}"
+      queue=("${queue[@]:1}")
+      while read -r dll; do
+        case "$dll" in
+          KERNEL32.dll|KERNELBASE.dll|USER32.dll|ADVAPI32.dll|SHELL32.dll|OLE32.dll|GDI32.dll|MSVCRT.dll|WS2_32.dll|NTDLL.dll|WINMM.dll|BCRYPT.dll) continue ;;
+        esac
+        dest="$bin/$dll"
+        if [ -z "${seen[$dll]:-}" ] && [ -f "$sys_bin/$dll" ] && [ ! -f "$dest" ]; then
+          cp "$sys_bin/$dll" "$dest"
+          seen[$dll]=1
+          queue+=("$dest")
+        fi
+      done < <(objdump -p "$exe" 2>/dev/null | sed -n 's/.*DLL Name: //p')
+    done
+  }
+  copy_msys_dlls "$PREFIX/bin" "$MSYSTEM_PREFIX/bin"
+fi
 
 echo "=== built ffmpeg binaries ==="
 ls -lh "$PREFIX/bin/"
