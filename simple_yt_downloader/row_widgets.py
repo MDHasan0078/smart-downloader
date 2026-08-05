@@ -27,12 +27,20 @@ VIDEO_QUALITIES = [
     ("144", "144p"), ("240", "240p"), ("360", "360p"),
     ("480", "480p"), ("720", "720p (HD)"), ("1080", "1080p (Full HD)"),
     ("1440", "1440p (2K)"), ("2160", "2160p (4K)"),
+    ("4320", "4320p (8K)"), ("5760", "5760p (10K)"),
 ]
 AUDIO_FORMATS = ["mp3", "m4a", "opus", "wav", "flac"]
 AUDIO_QUALITIES = [
     ("128", "128 kbps"), ("192", "192 kbps"),
     ("256", "256 kbps"), ("best", "Best available"),
 ]
+
+# Empty value = "no fps constraint", i.e. let yt-dlp pick whatever fps
+# that resolution has (usually 30). Explicit 60/90 emit [fps<=N].
+FPS_OPTIONS = [("", "30 fps (default)"), ("60", "60 fps"), ("90", "90 fps")]
+# The quality-combo sentinel whose entry, when picked, opens the
+# W x H dialog. The resolved value is stored as "custom:WxH".
+CUSTOM_QUALITY_ID = "custom"
 
 _ICON_FALLBACK_GLYPHS = {
     "media-playback-pause-symbolic": "⏸",
@@ -114,6 +122,10 @@ class ModeQualityBar(Gtk.Box):
         self.mode = "video"
         self._video_quality_sizes = {}
         self._audio_quality_sizes = {}
+        self._custom_w = None
+        self._custom_h = None
+        self._last_quality_id = None
+        self._suppress_quality_changed = False
 
         self.video_btn = Gtk.ToggleButton(label="Video")
         self.audio_btn = Gtk.ToggleButton(label="Audio")
@@ -126,8 +138,13 @@ class ModeQualityBar(Gtk.Box):
 
         self.format_combo = Gtk.ComboBoxText()
         self.quality_combo = Gtk.ComboBoxText()
+        self.fps_combo = Gtk.ComboBoxText()
         self.pack_end(self.quality_combo, False, False, 0)
         self.pack_end(self.format_combo, False, False, 0)
+        self.pack_end(self.fps_combo, False, False, 0)
+
+        self.quality_combo.connect("changed", self._on_quality_changed)
+        self.quality_combo.connect("popup", self._on_quality_popup)
 
         self._defaults = defaults
         self._populate_for_mode("video")
@@ -153,7 +170,8 @@ class ModeQualityBar(Gtk.Box):
 
     def _populate_for_mode(self, mode):
         self.format_combo.remove_all()
-        self.quality_combo.remove_all()
+        self.fps_combo.remove_all()
+        self._populate_quality_combo()
         if mode == "video":
             for fmt in VIDEO_FORMATS:
                 self.format_combo.append_text(fmt.upper())
@@ -161,14 +179,13 @@ class ModeQualityBar(Gtk.Box):
             idx = VIDEO_FORMATS.index(default_fmt) if default_fmt in VIDEO_FORMATS else 0
             self.format_combo.set_active(idx)
 
-            for value, display in VIDEO_QUALITIES:
-                size_text = self._video_quality_sizes.get(value)
-                label = f"{display} ({size_text})" if size_text else display
-                self.quality_combo.append(value, label)
+            for value, display in FPS_OPTIONS:
+                self.fps_combo.append(value, display)
+            self.fps_combo.set_active(0)
+            self.fps_combo.set_sensitive(True)
+
             default_q = self._defaults.get("default_video_quality", "720")
-            self.quality_combo.set_active_id(default_q)
-            if self.quality_combo.get_active() == -1:
-                self.quality_combo.set_active(4)
+            self._set_quality_active(default_q, fallback_index=4)
         else:
             for fmt in AUDIO_FORMATS:
                 self.format_combo.append_text(fmt.upper())
@@ -176,19 +193,105 @@ class ModeQualityBar(Gtk.Box):
             idx = AUDIO_FORMATS.index(default_fmt) if default_fmt in AUDIO_FORMATS else 0
             self.format_combo.set_active(idx)
 
+            self.fps_combo.set_sensitive(False)
+
+            default_q = self._defaults.get("default_audio_quality", "192")
+            self._set_quality_active(default_q, fallback_index=1)
+
+    def _populate_quality_combo(self):
+        self.quality_combo.remove_all()
+        if self.mode == "video":
+            for value, display in VIDEO_QUALITIES:
+                size_text = self._video_quality_sizes.get(value)
+                label = f"{display} ({size_text})" if size_text else display
+                self.quality_combo.append(value, label)
+            if self._custom_w and self._custom_h:
+                display = f"Custom ({self._custom_w}×{self._custom_h})"
+            else:
+                display = "Custom…"
+            self.quality_combo.append(CUSTOM_QUALITY_ID, display)
+        else:
             for value, display in AUDIO_QUALITIES:
                 size_text = self._audio_quality_sizes.get(value)
                 label = f"{display} ({size_text})" if size_text else display
                 self.quality_combo.append(value, label)
-            default_q = self._defaults.get("default_audio_quality", "192")
-            self.quality_combo.set_active_id(default_q)
+
+    def _set_quality_active(self, active_id, fallback_index=-1):
+        self._suppress_quality_changed = True
+        try:
+            if active_id is not None:
+                self.quality_combo.set_active_id(active_id)
             if self.quality_combo.get_active() == -1:
-                self.quality_combo.set_active(1)
+                self.quality_combo.set_active(fallback_index)
+        finally:
+            self._suppress_quality_changed = False
+
+    def _on_quality_popup(self, combo):
+        self._last_quality_id = combo.get_active_id()
+
+    def _on_quality_changed(self, combo):
+        if self._suppress_quality_changed or self.mode != "video":
+            return
+        if combo.get_active_id() != CUSTOM_QUALITY_ID:
+            return
+        dims = self._ask_custom_quality()
+        if dims is None:
+            self._set_quality_active(self._last_quality_id, fallback_index=4)
+            return
+        self._custom_w, self._custom_h = dims
+        self._last_quality_id = CUSTOM_QUALITY_ID
+        self._populate_quality_combo()
+        self._set_quality_active(CUSTOM_QUALITY_ID, fallback_index=4)
+
+    def _ask_custom_quality(self):
+        dialog = Gtk.Dialog(
+            title="Custom video quality",
+            parent=self.get_toplevel() or None,
+            modal=True,
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OK, Gtk.ResponseType.OK,
+        )
+        content = dialog.get_content_area()
+        content.set_spacing(8)
+        grid = Gtk.Grid(column_spacing=8, row_spacing=8)
+        content.add(grid)
+
+        width_label = Gtk.Label(label="Width (px):")
+        height_label = Gtk.Label(label="Height (px):")
+        width_label.set_xalign(1)
+        height_label.set_xalign(1)
+        width_spin = Gtk.SpinButton.new_with_range(320, 7680, 16)
+        height_spin = Gtk.SpinButton.new_with_range(240, 7680, 16)
+        width_spin.set_numeric(True)
+        height_spin.set_numeric(True)
+        width_spin.set_value(self._custom_w or 1920)
+        height_spin.set_value(self._custom_h or 1080)
+        grid.attach(width_label, 0, 0, 1, 1)
+        grid.attach(width_spin, 1, 0, 1, 1)
+        grid.attach(height_label, 0, 1, 1, 1)
+        grid.attach(height_spin, 1, 1, 1, 1)
+        dialog.show_all()
+
+        response = dialog.run()
+        width = int(width_spin.get_value())
+        height = int(height_spin.get_value())
+        dialog.destroy()
+        if response != Gtk.ResponseType.OK:
+            return None
+        return width, height
 
     def get_selection(self):
         fmt = (self.format_combo.get_active_text() or "").lower()
         quality_id = self.quality_combo.get_active_id()
-        return self.mode, fmt, quality_id
+        if quality_id == CUSTOM_QUALITY_ID:
+            if self._custom_w and self._custom_h:
+                quality_id = f"custom:{self._custom_w}x{self._custom_h}"
+            else:
+                quality_id = None
+        fps = self.fps_combo.get_active_id() or ""
+        return self.mode, fmt, quality_id, fps
 
     def set_video_quality_sizes(self, size_map):
         self._video_quality_sizes = {k: v for k, v in size_map.items() if v}
@@ -196,7 +299,7 @@ class ModeQualityBar(Gtk.Box):
             current = self.quality_combo.get_active_id()
             self._populate_for_mode("video")
             if current:
-                self.quality_combo.set_active_id(current)
+                self._set_quality_active(current)
 
     def set_audio_quality_sizes(self, size_map):
         self._audio_quality_sizes = {k: v for k, v in size_map.items() if v}
@@ -204,13 +307,14 @@ class ModeQualityBar(Gtk.Box):
             current = self.quality_combo.get_active_id()
             self._populate_for_mode("audio")
             if current:
-                self.quality_combo.set_active_id(current)
+                self._set_quality_active(current)
 
     def set_sensitive_all(self, sensitive):
         self.video_btn.set_sensitive(sensitive)
         self.audio_btn.set_sensitive(sensitive)
         self.format_combo.set_sensitive(sensitive)
         self.quality_combo.set_sensitive(sensitive)
+        self.fps_combo.set_sensitive(sensitive)
 
 
 class VideoRow(Gtk.Box):
@@ -338,11 +442,12 @@ class VideoRow(Gtk.Box):
         return False
 
     def _on_start_clicked(self, _btn):
-        mode, fmt, quality = self.quality_bar.get_selection()
+        mode, fmt, quality, fps = self.quality_bar.get_selection()
         self.task.mode = mode
         if mode == "video":
             self.task.video_format = fmt
             self.task.video_quality = quality
+            self.task.video_fps = fps
         else:
             self.task.audio_format = fmt
             self.task.audio_quality = quality
@@ -627,8 +732,8 @@ class PlaylistRow(Gtk.Box):
         _set_button_icon(self.expand_btn, icon_name)
 
     def _on_start_clicked(self, _btn):
-        mode, fmt, quality = self.quality_bar.get_selection()
-        self._mode, self._fmt, self._quality = mode, fmt, quality
+        mode, fmt, quality, fps = self.quality_bar.get_selection()
+        self._mode, self._fmt, self._quality, self._fps = mode, fmt, quality, fps
         self.quality_bar.set_sensitive_all(False)
         self.start_btn.set_visible(False)
         self.pause_btn.set_visible(True)
@@ -669,6 +774,7 @@ class PlaylistRow(Gtk.Box):
             if self._mode == "video":
                 task.video_format = self._fmt
                 task.video_quality = self._quality
+                task.video_fps = self._fps
             else:
                 task.audio_format = self._fmt
                 task.audio_quality = self._quality
@@ -745,6 +851,7 @@ class PlaylistRow(Gtk.Box):
         if self._mode == "video":
             task.video_format = self._fmt
             task.video_quality = self._quality
+            task.video_fps = self._fps
         else:
             task.audio_format = self._fmt
             task.audio_quality = self._quality

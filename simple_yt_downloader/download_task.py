@@ -146,7 +146,7 @@ class PhaseTracker:
         }
 
 
-VIDEO_QUALITY_TIERS = ["144", "240", "360", "480", "720", "1080", "1440", "2160"]
+VIDEO_QUALITY_TIERS = ["144", "240", "360", "480", "720", "1080", "1440", "2160", "4320", "5760"]
 
 
 def _fmt_size(num_bytes):
@@ -261,6 +261,26 @@ def sum_quality_sizes(size_dicts, tiers=None):
     return {tier: (totals[tier] if known[tier] else None) for tier in tiers}
 
 
+def _split_custom_quality(quality):
+    """Returns (height, width) for a video quality id.
+
+    A preset like "720" becomes ("720", None). A custom selection like
+    "custom:1920x1080" becomes ("1080", "1920"). Falls back to a safe 720p
+    preset when the value is missing or malformed.
+    """
+    value = quality or "720"
+    if isinstance(value, str) and value.startswith("custom:"):
+        try:
+            w, h = value.split(":", 1)[1].lower().split("x")
+            w, h = int(w), int(h)
+            if w > 0 and h > 0:
+                return str(h), str(w)
+        except (ValueError, AttributeError):
+            pass
+        return "720", None
+    return str(value), None
+
+
 class DownloadTask:
     """One video's worth of download state and control."""
 
@@ -276,7 +296,8 @@ class DownloadTask:
 
         self.mode = "video"  # "video" | "audio"
         self.video_format = "mp4"
-        self.video_quality = "720"
+        self.video_quality = "720"  # preset tier ("720") or "custom:WxH"
+        self.video_fps = ""  # "" = no fps constraint, else max fps (60/90)
         self.audio_format = "mp3"
         self.audio_quality = "192"
 
@@ -375,12 +396,44 @@ class DownloadTask:
     def build_format_string(self):
         if self.mode == "audio":
             return "bestaudio"
-        res = self.video_quality
+        height, width = _split_custom_quality(self.video_quality)
         ext = self.video_format
-        return (
-            f"bestvideo[height<={res}][ext={ext}]+bestaudio/"
-            f"bestvideo[height<={res}]+bestaudio/best[height<={res}]"
-        )
+        fps = self.video_fps or ""
+
+        def constraints(h, w=None, f=None, e=None):
+            # height/width/fps are numeric caps; ext is an equality match.
+            parts = [f"[height<={h}]"]
+            if w:
+                parts.append(f"[width<={w}]")
+            if f:
+                parts.append(f"[fps<={f}]")
+            if e:
+                parts.append(f"[ext={e}]")
+            return "".join(parts)
+
+        # Ordered from most- to least-constrained so a video that doesn't
+        # offer the exact combination (no 60/90fps stream at that
+        # resolution, no file in the requested ext, etc.) still downloads
+        # instead of failing outright. Each video candidate is paired with
+        # bestaudio; the final fallback is a single already-merged file.
+        chain, seen = [], set()
+        for h, w, f, e in (
+            (height, width, fps, ext),
+            (height, width, fps, None),
+            (height, width, None, ext),
+            (height, width, None, None),
+            (height, None, fps, ext),
+            (height, None, fps, None),
+            (height, None, None, ext),
+            (height, None, None, None),
+        ):
+            c = constraints(h, w, f, e)
+            if c in seen:
+                continue
+            seen.add(c)
+            chain.append(f"bestvideo{c}+bestaudio")
+        chain.append(f"best[height<={height}]")
+        return "/".join(chain)
 
     def build_postprocess_args(self):
         if self.mode == "audio":

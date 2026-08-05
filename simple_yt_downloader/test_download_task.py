@@ -10,10 +10,79 @@ from simple_yt_downloader.download_task import (
     PHASE_AUDIO,
     PHASE_MERGE,
     PHASE_VIDEO,
+    DownloadTask,
     PhaseTracker,
+    _split_custom_quality,
     phase_for_stream,
     phase_label,
 )
+
+
+class SplitCustomQualityTests(unittest.TestCase):
+    def test_preset_is_height_only(self):
+        self.assertEqual(_split_custom_quality("720"), ("720", None))
+
+    def test_custom_parses_width_and_height(self):
+        self.assertEqual(_split_custom_quality("custom:1920x1080"), ("1080", "1920"))
+
+    def test_custom_ignores_case(self):
+        self.assertEqual(_split_custom_quality("custom:3840X2160"), ("2160", "3840"))
+
+    def test_malformed_custom_falls_back_to_720(self):
+        for bad in ("custom:junk", "custom:", "custom:-5x-10", "custom:0x0"):
+            self.assertEqual(_split_custom_quality(bad), ("720", None))
+
+    def test_missing_value_falls_back_to_720(self):
+        self.assertEqual(_split_custom_quality(""), ("720", None))
+        self.assertEqual(_split_custom_quality(None), ("720", None))
+
+
+class BuildFormatStringTests(unittest.TestCase):
+    def _task(self, **kw):
+        task = DownloadTask("https://example.com/v", "/tmp")
+        for key, value in kw.items():
+            setattr(task, key, value)
+        return task
+
+    def test_audio_mode_ignores_video_settings(self):
+        task = self._task(mode="audio", video_quality="2160", video_fps="90")
+        self.assertEqual(task.build_format_string(), "bestaudio")
+
+    def test_default_video_chain(self):
+        task = self._task()
+        self.assertEqual(
+            task.build_format_string(),
+            "bestvideo[height<=720][ext=mp4]+bestaudio/"
+            "bestvideo[height<=720]+bestaudio/best[height<=720]",
+        )
+
+    def test_fps_adds_constraint_with_fallbacks(self):
+        task = self._task(video_fps="60")
+        chain = task.build_format_string().split("/")
+        self.assertIn("bestvideo[height<=720][fps<=60][ext=mp4]+bestaudio", chain)
+        self.assertIn("bestvideo[height<=720]+bestaudio", chain)
+        self.assertEqual(chain[-1], "best[height<=720]")
+
+    def test_custom_resolution_uses_width_and_height(self):
+        task = self._task(video_quality="custom:1920x1080")
+        chain = task.build_format_string().split("/")
+        self.assertIn("bestvideo[height<=1080][width<=1920][ext=mp4]+bestaudio", chain)
+        self.assertIn("best[height<=1080]", chain)
+
+    def test_custom_plus_fps_chain_is_fully_qualified_first(self):
+        task = self._task(video_quality="custom:3840x2160", video_fps="90", video_format="webm")
+        chain = task.build_format_string().split("/")
+        self.assertEqual(
+            chain[0],
+            "bestvideo[height<=2160][width<=3840][fps<=90][ext=webm]+bestaudio",
+        )
+
+    def test_ext_is_equality_filter_not_range(self):
+        task = self._task(video_format="mkv")
+        chain = task.build_format_string().split("/")
+        self.assertIn("bestvideo[height<=720][ext=mkv]+bestaudio", chain)
+        for part in chain:
+            self.assertNotIn("ext<=", part)
 
 
 class PhaseForStreamTests(unittest.TestCase):
