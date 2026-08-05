@@ -56,8 +56,8 @@ if [ "$(uname -s)" = "Darwin" ]; then
 
   if [ ! -f "$DEPS_PREFIX/lib/libmp3lame.a" ]; then
     download_tarball \
-      "https://downloads.sourceforge.net/lame/lame-3.100.tar.gz" \
-      "https://sourceforge.net/projects/lame/files/lame/3.100/lame-3.100.tar.gz/download" \
+      "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/lame_3.100.orig.tar.gz" \
+      "https://deb.debian.org/debian/pool/main/l/lame/lame_3.100.orig.tar.gz" \
       "$SRC_DIR/../lame-3.100.tar.gz"
     tar -xzf "$SRC_DIR/../lame-3.100.tar.gz" -C "$SRC_DIR/.."
     (
@@ -70,8 +70,8 @@ if [ "$(uname -s)" = "Darwin" ]; then
 
   if [ ! -f "$DEPS_PREFIX/lib/libopus.a" ]; then
     download_tarball \
-      "https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz" \
       "https://github.com/xiph/opus/releases/download/v1.5.2/opus-1.5.2.tar.gz" \
+      "https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz" \
       "$SRC_DIR/../opus-1.5.2.tar.gz"
     tar -xzf "$SRC_DIR/../opus-1.5.2.tar.gz" -C "$SRC_DIR/.."
     (
