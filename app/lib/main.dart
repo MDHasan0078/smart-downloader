@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
@@ -7,6 +9,7 @@ import 'src/screens/home_screen.dart';
 import 'src/screens/queue_screen.dart';
 import 'src/screens/settings_screen.dart';
 import 'src/theme/app_theme.dart';
+import 'src/theme/theme_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,15 +34,20 @@ class SmartDownloaderApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => EngineProvider(),
-      child: MaterialApp(
-        title: 'Smart Downloader',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: ThemeMode.system,
-        home: const AppShell(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeController()..load()),
+        ChangeNotifierProvider(create: (_) => EngineProvider()),
+      ],
+      child: Consumer<ThemeController>(
+        builder: (context, themeController, _) => MaterialApp(
+          title: 'Smart Downloader',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: themeController.themeMode,
+          home: const AppShell(),
+        ),
       ),
     );
   }
@@ -65,6 +73,7 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (Platform.environment.containsKey('FLUTTER_TEST')) return;
       final provider = context.read<EngineProvider>();
       try {
         provider.initialize(EngineLocator.engineDir);
