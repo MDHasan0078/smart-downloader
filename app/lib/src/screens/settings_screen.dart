@@ -215,12 +215,15 @@ class SettingsScreen extends StatelessWidget {
                       FutureBuilder<PackageInfo>(
                         future: _packageInfoFuture,
                         builder: (context, snapshot) {
-                          final version = snapshot.data?.version ?? '2.1.0';
+                          // Never fall back to a hardcoded version -- it
+                          // can drift from pubspec.yaml. PackageInfo only
+                          // fails in exotic builds, so 'Unknown' is fine.
+                          final version = snapshot.data?.version;
                           return _buildInfoRow(
                             context,
                             icon: Icons.apps,
                             label: 'Version',
-                            value: 'v$version',
+                            value: version == null ? 'Unknown' : 'v$version',
                           );
                         },
                       ),
