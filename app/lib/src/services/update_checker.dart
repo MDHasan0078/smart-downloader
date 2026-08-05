@@ -1,16 +1,23 @@
 import 'dart:convert';
 import 'dart:io';
 
+class UpdateAsset {
+  const UpdateAsset({required this.name, required this.url});
+
+  final String name;
+  final String url;
+}
+
 class UpdateInfo {
   const UpdateInfo({
     required this.latestVersion,
     required this.releaseUrl,
-    required this.assetNames,
+    required this.assets,
   });
 
   final String latestVersion;
   final String releaseUrl;
-  final List<String> assetNames;
+  final List<UpdateAsset> assets;
 
   bool isNewerThan(String current) {
     final cur = current.split('.').map((s) => int.tryParse(s) ?? 0).toList();
@@ -23,10 +30,45 @@ class UpdateInfo {
     }
     return false;
   }
+
+  /// The best installer asset for the current platform.
+  ///
+  /// Prefers the versioned name when a platform ships one; otherwise falls
+  /// back to the platform's file-extension pattern so unversioned assets
+  /// (e.g. the macOS SmartDownloader.dmg) still resolve.
+  ///
+  /// [operatingSystem] overrides Platform.operatingSystem for testing.
+  UpdateAsset? assetForPlatform({String? operatingSystem}) {
+    final os = operatingSystem ?? Platform.operatingSystem;
+    final versioned = <String>[];
+    final patterns = <RegExp>[];
+    switch (os) {
+      case 'windows':
+        versioned.add('SmartDownloader-$latestVersion-Setup.exe');
+        patterns.add(RegExp(r'Setup\.exe$'));
+      case 'macos':
+        versioned.add('SmartDownloader.dmg');
+        patterns.add(RegExp(r'\.dmg$'));
+      case 'linux':
+        versioned.add('simple-yt-downloader_${latestVersion}_all.deb');
+        patterns.add(RegExp(r'_all\.deb$'));
+      default:
+        return null;
+    }
+    for (final asset in assets) {
+      if (versioned.contains(asset.name)) return asset;
+    }
+    for (final pattern in patterns) {
+      for (final asset in assets) {
+        if (pattern.hasMatch(asset.name)) return asset;
+      }
+    }
+    return null;
+  }
 }
 
 class UpdateChecker {
-  static const _repo = 'MDHasan0078/simple-yt-downloader';
+  static const _repo = 'MDHasan0078/smart-downloader';
 
   Future<UpdateInfo?> checkForUpdate() async {
     final client = HttpClient()
@@ -43,34 +85,21 @@ class UpdateChecker {
       final json = jsonDecode(body) as Map<String, dynamic>;
       final assets = ((json['assets'] as List?) ?? const [])
           .cast<Map<String, dynamic>>()
-          .map((a) => a['name'] as String)
+          .map((a) => UpdateAsset(
+                name: a['name'] as String,
+                url: a['browser_download_url'] as String,
+              ))
           .toList();
       return UpdateInfo(
         latestVersion:
             (json['tag_name'] as String).replaceFirst(RegExp(r'^v'), ''),
         releaseUrl: json['html_url'] as String,
-        assetNames: assets,
+        assets: assets,
       );
     } catch (_) {
       return null;
     } finally {
       client.close();
-    }
-  }
-
-  static String installInstructions(String version) {
-    switch (Platform.operatingSystem) {
-      case 'windows':
-        return 'Download SmartDownloader-$version-Setup.exe and run it.\n'
-            'It installs over the current version silently.';
-      case 'linux':
-        return 'Download simple-yt-downloader_${version}_all.deb and run:\n'
-            '    sudo dpkg -i simple-yt-downloader_${version}_all.deb';
-      case 'macos':
-        return 'Download SmartDownloader.dmg, open it, drag Smart Downloader '
-            'into Applications, then eject the disk image.';
-      default:
-        return 'Download the latest release for your platform.';
     }
   }
 

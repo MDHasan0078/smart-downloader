@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../engine/engine_provider.dart';
 import '../services/update_checker.dart';
+import '../services/update_installer.dart';
 import '../theme/theme_controller.dart';
 
 final Future<PackageInfo> _packageInfoFuture = PackageInfo.fromPlatform();
@@ -297,23 +300,151 @@ class SettingsScreen extends StatelessWidget {
         title: const Text('Update available'),
         content: Text(
           'Version v${update.latestVersion} is available.\n\n'
-          '${UpdateChecker.installInstructions(update.latestVersion)}',
+          'Download the installer now, or open the release page instead.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Later'),
           ),
-          FilledButton(
+          TextButton(
             onPressed: () {
               Navigator.pop(dialogContext);
               UpdateChecker.openReleasePage(update.releaseUrl);
             },
             child: const Text('Open Release Page'),
           ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _downloadAndInstall(context, update);
+            },
+            child: const Text('Download & Install'),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _downloadAndInstall(
+    BuildContext context,
+    UpdateInfo update,
+  ) async {
+    final asset = update.assetForPlatform();
+    if (asset == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No installer is available for this platform yet.'),
+        ),
+      );
+      return;
+    }
+
+    final progress = ValueNotifier<double>(0);
+    final status = ValueNotifier<String>('Downloading ${asset.name}…');
+    final installing = ValueNotifier<bool>(false);
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Updating Smart Downloader'),
+        content: ValueListenableBuilder<String>(
+          valueListenable: status,
+          builder: (context, label, _) {
+            final active = installing.value;
+            final fraction = progress.value;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label),
+                const SizedBox(height: 16),
+                LinearProgressIndicator(
+                  value: !active && fraction > 0 ? fraction : null,
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+
+    String? error;
+    try {
+      final file = await UpdateInstaller.download(
+        asset,
+        (received, total) {
+          if (total != null && total > 0) {
+            progress.value = received / total;
+          }
+          status.value = 'Downloading ${asset.name}\n'
+              '${_formatBytes(received)} of '
+              '${total != null ? _formatBytes(total) : '…'}';
+        },
+      );
+
+      installing.value = true;
+      if (Platform.isWindows) {
+        status.value =
+            'Running the installer…\nThe app will be updated in place.';
+        final result = await UpdateInstaller.installWindows(file);
+        if (result.exitCode != 0) {
+          error = 'The installer failed (exit ${result.exitCode}).';
+        }
+      } else if (Platform.isMacOS) {
+        status.value = 'Installing to Applications…';
+        await UpdateInstaller.installMacOS(file);
+      } else {
+        error = 'Please open the release page to install on this platform.';
+      }
+
+      await UpdateInstaller.cleanup(file);
+    } on UpdateInstallException catch (e) {
+      error = e.message;
+    } catch (e) {
+      error = e.toString();
+    }
+    if (!context.mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Update complete'),
+        content: const Text(
+          'Smart Downloader was updated to the latest version.\n'
+          'Please restart the app to use it.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
   Widget _buildInfoRow(

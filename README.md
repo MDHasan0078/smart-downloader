@@ -31,8 +31,9 @@ Linux distros (tested on Linux Mint).
   Dependencies" button
 - **Check for Updates** (Settings → About) — queries the GitHub releases API
   in the background and offers to **Download & Install** the latest version
-  (streamed to the user cache, installed via `pkexec`, `.deb` cleaned up
-  afterwards), or open the release page instead
+  for your platform: `.deb` via `pkexec` on Linux, silent installer on
+  Windows, `.dmg` → Applications (admin prompt) on macOS — the downloaded
+  file is cleaned up afterwards — or open the release page instead
 
 ## Install
 
