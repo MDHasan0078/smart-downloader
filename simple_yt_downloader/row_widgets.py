@@ -71,6 +71,13 @@ def _icon_theme_has(icon_name):
         return False
 
 
+def _swallow_combo_scroll(combo):
+    """GTK3 changes a closed combo's selection when the mouse wheel scrolls
+    over it. Selection should only ever change through the dropdown, so
+    swallow wheel events over the combo (returning True marks them handled)."""
+    combo.connect("scroll-event", lambda _widget, _event: True)
+
+
 def _icon_button(icon_name, tooltip=""):
     btn = Gtk.Button()
     btn.set_relief(Gtk.ReliefStyle.NONE)
@@ -139,6 +146,8 @@ class ModeQualityBar(Gtk.Box):
         self.format_combo = Gtk.ComboBoxText()
         self.quality_combo = Gtk.ComboBoxText()
         self.fps_combo = Gtk.ComboBoxText()
+        for combo in (self.format_combo, self.quality_combo, self.fps_combo):
+            _swallow_combo_scroll(combo)
         self.pack_end(self.quality_combo, False, False, 0)
         self.pack_end(self.format_combo, False, False, 0)
         self.pack_end(self.fps_combo, False, False, 0)
@@ -371,6 +380,7 @@ class VideoRow(Gtk.Box):
         status_row.pack_end(self.logs_btn, False, False, 0)
 
         self.cancel_btn = _icon_button("window-close-symbolic", "Cancel")
+        self.cancel_btn.get_style_context().add_class("destructive-icon")
         self.cancel_btn.connect("clicked", self._on_cancel_clicked)
         status_row.pack_end(self.cancel_btn, False, False, 0)
 
@@ -596,6 +606,7 @@ class PlaylistRow(Gtk.Box):
         header.pack_start(self.pause_btn, False, False, 0)
 
         self.cancel_btn = _icon_button("process-stop-symbolic", "Cancel playlist")
+        self.cancel_btn.get_style_context().add_class("destructive-icon")
         self.cancel_btn.connect("clicked", self._on_cancel_clicked)
         self.cancel_btn.set_no_show_all(True)
         self.cancel_btn.set_visible(False)

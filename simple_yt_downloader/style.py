@@ -163,6 +163,17 @@ button.image-button:hover {
 button.image-button:active { background: alpha(@theme_fg_color, 0.14); }
 button.image-button:disabled { opacity: 0.4; }
 
+/* Destructive cancel/close icons: muted text washes out on dark themes,
+   so give the abort action the error red (also styles the fallback-glyph
+   label child, which would otherwise keep the theme's label color). */
+button.image-button.destructive-icon { color: @error; }
+button.image-button.destructive-icon label { color: @error; }
+button.image-button.destructive-icon:hover {
+    color: @error;
+    background: alpha(@error, 0.12);
+}
+button.image-button.destructive-icon:active { background: alpha(@error, 0.20); }
+
 /* ---- Segmented pills (Video/Audio + Settings theme control) -----
    GtkToggleButton renders as node "button" with :checked -- there is no
    "togglebutton" node. One rule covers both controls.
