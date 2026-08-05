@@ -45,6 +45,107 @@ POSTPROCESS_START_RE = re.compile(r"^\[(\w+)\]")
 # turn, then letting it continue. See DownloadTask._maybe_gate_postprocessing().
 _MERGE_LOCK = threading.Lock()
 
+PHASE_VIDEO = "video"
+PHASE_AUDIO = "audio"
+PHASE_MERGE = "merge"
+
+# Postprocessor tag (lowercased) -> status label. Anything not listed
+# here falls back to "Merging…".
+_POSTPROCESS_LABELS = {
+    "merger": "Merging…",
+    "extractaudio": "Converting to audio…",
+}
+
+
+def phase_for_stream(mode, stream_number):
+    """Which download phase a stream maps to. stream_number is 1-based
+    (stream 1 is the first one yt-dlp downloads).
+
+    Video mode downloads the video stream first, then audio (the '+'
+    chain in build_format_string() is video-first). Audio mode only ever
+    downloads a single audio stream.
+    """
+    if mode == "audio":
+        return PHASE_AUDIO
+    return PHASE_VIDEO if stream_number <= 1 else PHASE_AUDIO
+
+
+def phase_label(phase, postprocess_tag=None):
+    """Human-readable status text for a download phase. The postprocessor
+    tag makes the merge label specific (e.g. '[ExtractAudio]' →
+    'Converting to audio…'); anything unrecognized falls back to
+    'Merging…'."""
+    if phase == PHASE_VIDEO:
+        return "Downloading video"
+    if phase == PHASE_AUDIO:
+        return "Downloading audio"
+    if phase == PHASE_MERGE:
+        if postprocess_tag:
+            return _POSTPROCESS_LABELS.get(postprocess_tag.lower(), "Merging…")
+        return "Merging…"
+    return "Downloading"
+
+
+class PhaseTracker:
+    """Tracks which phase of the download yt-dlp is currently in, purely
+    from the text lines it already emits (no yt-dlp invocation change).
+
+    yt-dlp downloads a 'bestvideo...+bestaudio' request as separate
+    sequential streams, each with its own '[download] Destination:' line
+    and its own 0-100% progress series; the progress bar still fills once
+    per stream exactly as yt-dlp reports it, but the status label can now
+    explain what is actually happening. A non-'[download]' bracketed tag
+    (e.g. '[Merger]') marks the ffmpeg postprocess phase.
+    """
+
+    def __init__(self, mode, expected_streams):
+        self.mode = mode
+        self.stream_number = 0
+        self.expected_streams = expected_streams
+        self.phase = phase_for_stream(mode, 1)
+        self.postprocess_tag = None
+
+    @property
+    def phase_label(self):
+        return phase_label(self.phase, self.postprocess_tag)
+
+    def note_line(self, line):
+        """Feed one yt-dlp stdout line. Returns the new phase label if the
+        line moved the download onto a new stream or into the
+        postprocess/merge phase, else None (so callers only re-render when
+        the label actually changes)."""
+        if DESTINATION_RE.match(line):
+            self.stream_number += 1
+            self.phase = phase_for_stream(self.mode, self.stream_number)
+            return self.phase_label
+        if ALREADY_DOWNLOADED_RE.search(line):
+            # A skipped stream (file already present) advances the ordinal
+            # without producing a progress series -- the next stream must
+            # still be labeled correctly. No re-emit needed here.
+            self.stream_number += 1
+            return None
+        m = POSTPROCESS_START_RE.match(line)
+        if m and m.group(1).lower() != "download":
+            self.phase = PHASE_MERGE
+            self.postprocess_tag = m.group(1).lower()
+            return self.phase_label
+        return None
+
+    def progress_dict(self, percent, size, speed, eta):
+        """Builds the on_progress payload. Core fields are unchanged from
+        the pre-phase format; phase fields are purely additive."""
+        return {
+            "percent": percent,
+            "size": size,
+            "speed": speed,
+            "eta": eta,
+            "phase": self.phase,
+            "phase_label": self.phase_label,
+            "stream_index": self.stream_number,
+            "stream_total": self.expected_streams,
+        }
+
+
 VIDEO_QUALITY_TIERS = ["144", "240", "360", "480", "720", "1080", "1440", "2160"]
 
 
@@ -293,7 +394,11 @@ class DownloadTask:
         """Spawn the yt-dlp subprocess and stream progress to callbacks.
 
         on_progress(dict) is called for each parsed progress update:
-            {"percent": float, "size": str, "speed": str, "eta": str}
+            {"percent": float, "size": str, "speed": str, "eta": str,
+             "phase": "video"|"audio"|"merge", "phase_label": str,
+             "stream_index": int, "stream_total": int}
+        The first four fields are the raw yt-dlp values; the phase fields
+        are additive and let the UI label what is being downloaded.
         on_finished(success: bool, message: str) is called once when the
         process exits (or is cancelled).
 
@@ -310,6 +415,12 @@ class DownloadTask:
         self.log_lines = []
         self._acquired_merge_lock = False
         self._merge_lock_held = False
+        self._phase_tracker = PhaseTracker(
+            self.mode,
+            expected_streams=2
+            if (self.mode == "video" and "+" in self.build_format_string())
+            else 1,
+        )
 
         os.makedirs(self.download_dir, exist_ok=True)
         cmd = [
@@ -339,13 +450,22 @@ class DownloadTask:
 
             match = PROGRESS_RE.search(line)
             if match:
-                on_progress({
-                    "percent": float(match.group("percent")),
-                    "size": match.group("size") or self.size_str,
-                    "speed": match.group("speed") or "",
-                    "eta": match.group("eta") or "",
-                })
+                on_progress(self._phase_tracker.progress_dict(
+                    float(match.group("percent")),
+                    match.group("size") or self.size_str,
+                    match.group("speed") or "",
+                    match.group("eta") or "",
+                ))
                 continue
+
+            new_label = self._phase_tracker.note_line(line)
+            if new_label:
+                # A new stream or the postprocess/merge step started -- yt-dlp
+                # emits no percent line here, so re-emit the last progress
+                # payload carrying the new phase label. The merge gate below
+                # still runs: the '[Merger]'/'[ExtractAudio]' tag that flipped
+                # the label is the same signal it gates on.
+                on_progress(self._phase_tracker.progress_dict(0.0, self.size_str, "", ""))
 
             self._maybe_gate_postprocessing(line)
 

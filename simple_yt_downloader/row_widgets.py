@@ -367,10 +367,15 @@ class VideoRow(Gtk.Box):
 
     def _on_progress(self, info):
         self.progress.set_fraction(min(info["percent"] / 100.0, 1.0))
-        parts = [f"{info['percent']:.0f}%"] + [
-            p for p in (info.get("size"), info.get("speed"), info.get("eta") and f"ETA {info['eta']}") if p
-        ]
-        self.status_label.set_text("  ·  ".join(parts))
+        if info.get("phase") == "merge":
+            self.status_label.set_text(info.get("phase_label") or "Merging…")
+        else:
+            parts = [f"{info['percent']:.0f}%"] + [
+                p for p in (info.get("size"), info.get("speed"), info.get("eta") and f"ETA {info['eta']}") if p
+            ]
+            if info.get("phase_label"):
+                parts.insert(0, info["phase_label"])
+            self.status_label.set_text("  ·  ".join(parts))
         self._append_log(self.task.log_lines[-1] if self.task.log_lines else "")
         return False
 
@@ -773,12 +778,17 @@ class PlaylistRow(Gtk.Box):
         return False
 
     def _on_child_progress(self, idx, info):
-        parts = [f"{info['percent']:.0f}%"]
-        if info.get("speed"):
-            parts.append(info["speed"])
-        if info.get("eta"):
-            parts.append(f"ETA {info['eta']}")
-        detail = "  ·  ".join(parts)
+        if info.get("phase") == "merge":
+            detail = info.get("phase_label") or "Merging…"
+        else:
+            parts = [f"{info['percent']:.0f}%"]
+            if info.get("speed"):
+                parts.append(info["speed"])
+            if info.get("eta"):
+                parts.append(f"ETA {info['eta']}")
+            if info.get("phase_label"):
+                parts.insert(0, info["phase_label"])
+            detail = "  ·  ".join(parts)
 
         if idx < len(self.child_rows):
             self.child_rows[idx]._status_label.set_text(detail)
