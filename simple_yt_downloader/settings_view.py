@@ -7,6 +7,7 @@ rather than a popup dialog.
 
 import platform
 import threading
+import webbrowser
 
 import gi
 
@@ -15,6 +16,7 @@ from gi.repository import GLib, Gtk
 
 from . import config as config_module
 from . import dependencies
+from . import updater
 from . import __author__, __homepage__, __license__, __version__
 from .row_widgets import (
     AUDIO_FORMATS,
@@ -25,6 +27,17 @@ from .row_widgets import (
 )
 
 STATIC_DEPS = ["python3", "python3-gi", "gir1.2-gtk-3.0"]
+
+
+def _format_bytes(num):
+    """Human-friendly size for the download progress label."""
+    if not num:
+        return "0 B"
+    for unit in ("B", "KB", "MB", "GB"):
+        if num < 1024 or unit == "GB":
+            return f"{num:.1f} {unit}" if unit != "B" else f"{int(num)} B"
+        num /= 1024
+    return f"{num:.1f} GB"
 
 
 class SettingsView(Gtk.Box):
@@ -39,6 +52,12 @@ class SettingsView(Gtk.Box):
         self.on_back = on_back
         self.on_settings_changed = on_settings_changed
         self.on_theme_changed = on_theme_changed
+
+        self._dl_dialog = None
+        self._dl_bar = None
+        self._dl_label = None
+        self._install_dialog = None
+        self._install_bar = None
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         back_btn = Gtk.Button()
@@ -180,6 +199,11 @@ class SettingsView(Gtk.Box):
         github_link = Gtk.LinkButton.new_with_label(__homepage__, __homepage__)
         github_link.set_halign(Gtk.Align.END)
         card.pack_start(self._about_row("GitHub", github_link), False, False, 0)
+
+        card.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 0)
+        self.update_btn = Gtk.Button(label="Check for Updates")
+        self.update_btn.connect("clicked", self._on_check_updates)
+        card.pack_start(self.update_btn, False, False, 0)
         return card
 
     def _about_row(self, key, value):
@@ -196,6 +220,192 @@ class SettingsView(Gtk.Box):
         else:
             row.pack_start(value, True, True, 0)
         return row
+
+    # ---- Update check (async, like the dependency check) ----------------
+
+    def _on_check_updates(self, _btn):
+        self.update_btn.set_sensitive(False)
+        self.update_btn.set_label("Checking...")
+
+        def worker():
+            info = updater.fetch_latest_release()
+            GLib.idle_add(self._on_update_check_done, info)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_update_check_done(self, info):
+        self.update_btn.set_sensitive(True)
+        self.update_btn.set_label("Check for Updates")
+
+        if info is None:
+            self._show_info_dialog(
+                "Check Failed",
+                "Could not reach the update server. Please check your connection.",
+                message_type=Gtk.MessageType.ERROR,
+            )
+            return False
+
+        if updater.version_tuple(info["version"]) > updater.version_tuple(__version__):
+            dialog = Gtk.MessageDialog(
+                transient_for=self.get_toplevel(), flags=0,
+                message_type=Gtk.MessageType.QUESTION,
+                buttons=Gtk.ButtonsType.NONE,
+                text=f"Update available: v{info['version']}",
+            )
+            dialog.format_secondary_text(
+                f"You are running v{__version__}.\n\n"
+                "Download the latest release now, or open the release page instead."
+            )
+            dialog.add_button("Later", Gtk.ResponseType.CLOSE)
+            open_btn = dialog.add_button("Open Release Page", Gtk.ResponseType.NO)
+            dl_btn = dialog.add_button("Download & Install", Gtk.ResponseType.YES)
+            dl_btn.get_style_context().add_class("suggested-action")
+            response = dialog.run()
+            dialog.destroy()
+            if response == Gtk.ResponseType.YES:
+                self._start_update_download(info)
+            elif response == Gtk.ResponseType.NO:
+                webbrowser.open(info["release_url"])
+        else:
+            self._show_info_dialog(
+                "Up to date",
+                f"You are running the latest version (v{__version__}).",
+            )
+        return False
+
+    # ---- Self-update download & install -------------------------------
+
+    def _start_update_download(self, info):
+        """Begin streaming the .deb in the background; show a progress dialog."""
+        self._pending_update_info = info
+        version = info["version"]
+        deb_path = updater.deb_path(version)
+        dialog = Gtk.Dialog(
+            title=f"Downloading v{version}...",
+            transient_for=self.get_toplevel(),
+            modal=True,
+        )
+        dialog.get_content_area().set_spacing(10)
+        bar = Gtk.ProgressBar()
+        bar.set_show_text(True)
+        bar.set_text("Starting download...")
+        dialog.get_content_area().pack_start(bar, False, False, 0)
+        label = Gtk.Label(label="")
+        label.set_justify(Gtk.Justification.CENTER)
+        label.set_line_wrap(True)
+        dialog.get_content_area().pack_start(label, False, False, 0)
+        dialog.show_all()
+        self._dl_dialog = dialog
+        self._dl_bar = bar
+        self._dl_label = label
+
+        def worker():
+            def on_progress(downloaded, total):
+                def update_ui():
+                    if self._dl_bar is None:
+                        return False
+                    if total:
+                        self._dl_bar.set_fraction(downloaded / total if total else 0)
+                        self._dl_bar.set_text(
+                            f"{_format_bytes(downloaded)} / {_format_bytes(total)}"
+                        )
+                    else:
+                        self._dl_bar.pulse()
+                        self._dl_bar.set_text(_format_bytes(downloaded))
+                    return False
+
+                GLib.idle_add(update_ui)
+
+            try:
+                updater.download(info["deb_url"], deb_path, on_progress)
+            except updater.DownloadAborted:
+                GLib.idle_add(self._on_update_download_done, False, "Download cancelled.")
+                return
+            except updater.DownloadError as e:
+                GLib.idle_add(self._on_update_download_done, False, str(e))
+                return
+            except OSError as e:
+                GLib.idle_add(self._on_update_download_done, False, str(e))
+                return
+            GLib.idle_add(self._on_update_download_done, True, "")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_update_download_done(self, success, message):
+        dialog, self._dl_dialog = self._dl_dialog, None
+        self._dl_bar = None
+        self._dl_label = None
+        if dialog is not None:
+            dialog.destroy()
+
+        if not success:
+            self._show_info_dialog(
+                "Download failed",
+                message or "Could not download the update.",
+                message_type=Gtk.MessageType.ERROR,
+            )
+            return False
+
+        self._start_install()
+
+    def _start_install(self):
+        """Run apt-get via pkexec; the native polkit prompt is shown by pkexec."""
+        info = self._pending_update_info
+        if info is None:
+            self._show_info_dialog(
+                "Download failed",
+                "The update file could not be located after download.",
+                message_type=Gtk.MessageType.ERROR,
+            )
+            return
+
+        dialog = Gtk.Dialog(
+            title="Installing update...",
+            transient_for=self.get_toplevel(),
+            modal=True,
+        )
+        dialog.get_content_area().set_spacing(10)
+        bar = Gtk.Spinner()
+        bar.start()
+        dialog.get_content_area().pack_start(bar, False, False, 0)
+        label = Gtk.Label(
+            label="Installing via your system password prompt.\n"
+            "The app will close when the update is complete."
+        )
+        label.set_justify(Gtk.Justification.CENTER)
+        label.set_line_wrap(True)
+        dialog.get_content_area().pack_start(label, False, False, 0)
+        dialog.show_all()
+        self._install_dialog = dialog
+
+        deb_path = updater.deb_path(info["version"])
+
+        def worker():
+            def on_done(success, message):
+                GLib.idle_add(self._on_install_done, success, message, deb_path)
+
+            updater.install(deb_path, on_done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_install_done(self, success, message, deb_path):
+        updater.cleanup(deb_path)
+        dialog, self._install_dialog = self._install_dialog, None
+        if dialog is not None:
+            dialog.destroy()
+
+        if success:
+            self._show_info_dialog(
+                "Update complete",
+                message + "\nPlease restart the app to use the new version.",
+            )
+        else:
+            self._show_info_dialog(
+                "Install failed",
+                message,
+                message_type=Gtk.MessageType.ERROR,
+            )
+        return False
 
     def _section(self, text):
         label = Gtk.Label(label=text)
@@ -341,10 +551,14 @@ class SettingsView(Gtk.Box):
         self._show_info_dialog("Success" if success else "Installation failed", message)
         return False
 
-    def _show_info_dialog(self, title, message):
+    def _show_info_dialog(self, title, message, message_type=Gtk.MessageType.INFO):
+        if message_type is None:
+            message_type = (
+                Gtk.MessageType.ERROR if title == "Installation failed" else Gtk.MessageType.INFO
+            )
         dialog = Gtk.MessageDialog(
             transient_for=self.get_toplevel(), flags=0,
-            message_type=Gtk.MessageType.INFO if title != "Installation failed" else Gtk.MessageType.ERROR,
+            message_type=message_type,
             buttons=Gtk.ButtonsType.OK, text=title,
         )
         dialog.format_secondary_text(message[:500])

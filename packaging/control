@@ -4,7 +4,7 @@ Section: utils
 Priority: optional
 Architecture: all
 Maintainer: MD. Mahmudul Hasan
-Homepage: https://github.com/MDHasan0078/simple-yt-downloader
+Homepage: https://github.com/MDHasan0078/smart-downloader
 Depends: python3, python3-gi, gir1.2-gtk-3.0, yt-dlp, ffmpeg, policykit-1
 Description: Lightweight GTK3 GUI for downloading YouTube videos, audio, and playlists.
  A clean, single-window GTK3 desktop app for downloading YouTube videos,

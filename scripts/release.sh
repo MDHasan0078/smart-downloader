@@ -9,6 +9,7 @@ set -e
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONTROL="$REPO_ROOT/packaging/control"
+INIT_FILE="$REPO_ROOT/simple_yt_downloader/__init__.py"
 CHANGELOG="$REPO_ROOT/packaging/changelog"
 MAINTAINER="MD. Mahmudul Hasan <mdhasan0078@users.noreply.github.com>"
 
@@ -66,10 +67,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 sed -i "s/^Version: .*/Version: $NEW_VERSION/" "$CONTROL"
+sed -i "s/^__version__ = .*/__version__ = \"$NEW_VERSION\"/" "$INIT_FILE"
 { printf '%s' "$ENTRY"; cat "$CHANGELOG"; } > "$CHANGELOG.tmp"
 mv "$CHANGELOG.tmp" "$CHANGELOG"
 
-git -C "$REPO_ROOT" add packaging/control packaging/changelog
+git -C "$REPO_ROOT" add packaging/control packaging/changelog simple_yt_downloader/__init__.py
 git -C "$REPO_ROOT" commit -m "Bump version to $NEW_VERSION"
 git -C "$REPO_ROOT" tag "v$NEW_VERSION"
 git -C "$REPO_ROOT" push origin HEAD
@@ -77,4 +79,4 @@ git -C "$REPO_ROOT" push origin "v$NEW_VERSION"
 
 echo "Pushed v$NEW_VERSION. GitHub Actions is building the .deb and will"
 echo "attach it to the release. Verify at:"
-echo "  https://github.com/MDHasan0078/simple-yt-downloader/releases"
+echo "  https://github.com/MDHasan0078/smart-downloader/releases"

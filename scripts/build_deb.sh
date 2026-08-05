@@ -27,6 +27,7 @@ cp -r "$REPO_ROOT/packaging/icons/hicolor" "$PKG_DIR/usr/share/icons/"
 cp "$REPO_ROOT/LICENSE" "$PKG_DIR/usr/share/doc/simple-yt-downloader/copyright"
 gzip -n -9 -c "$REPO_ROOT/packaging/changelog" > "$PKG_DIR/usr/share/doc/simple-yt-downloader/changelog.gz"
 cp -r "$REPO_ROOT/simple_yt_downloader" "$PKG_DIR/usr/lib/simple-yt-downloader/"
+sed -i "s/^__version__ = .*/__version__ = \"$VERSION\"/" "$PKG_DIR/usr/lib/simple-yt-downloader/simple_yt_downloader/__init__.py"
 
 # Launcher: adds the installed package dir to sys.path and runs it.
 cat > "$PKG_DIR/usr/bin/simple-yt-downloader" << 'EOF'

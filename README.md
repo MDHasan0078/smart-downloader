@@ -1,5 +1,7 @@
 # Simple YT Downloader (GTK edition)
 
+[![Latest release](https://img.shields.io/github/v/release/MDHasan0078/smart-downloader?label=latest)](https://github.com/MDHasan0078/smart-downloader/releases)
+
 A lightweight GTK3 desktop app for downloading YouTube videos, audio, and
 playlists — built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 
@@ -27,16 +29,23 @@ Linux distros (tested on Linux Mint).
   for quick access), default video/audio format & quality, Light/Dark/System
   theme, and a built-in dependency checker with a one-click "Fix
   Dependencies" button
+- **Check for Updates** (Settings → About) — queries the GitHub releases API
+  in the background and offers to **Download & Install** the latest version
+  (streamed to the user cache, installed via `pkexec`, `.deb` cleaned up
+  afterwards), or open the release page instead
 
 ## Install
 
 Download the latest `.deb` from
-[Releases](https://github.com/MDHasan0078/simple-yt-downloader/releases) and install it:
+[Releases](https://github.com/MDHasan0078/smart-downloader/releases) and install it:
 
 ```bash
 sudo dpkg -i simple-yt-downloader_*.deb
 sudo apt install -f -y   # pulls in any missing dependencies
 ```
+
+The latest release also ships **macOS** and **Windows** builds of the app
+(see the release assets for the platform you're on).
 
 ### Dependencies
 
@@ -51,8 +60,8 @@ These are declared in `packaging/control`'s `Depends:` line, so a normal
 ## Running from source
 
 ```bash
-git clone https://github.com/MDHasan0078/simple-yt-downloader.git
-cd simple-yt-downloader
+git clone https://github.com/MDHasan0078/smart-downloader.git
+cd smart-downloader
 python3 run.py
 ```
 
@@ -79,7 +88,8 @@ simple_yt_downloader/     the actual application (Python + GTK3)
   download_task.py       wraps a single yt-dlp subprocess: probing,
                           format-size estimation, download, pause/resume
                           (process-group signaling), merge serialization
-  settings_view.py       the Settings screen (async dependency checking)
+  settings_view.py       the Settings screen (async dependency checking +
+                         in-app "Check for Updates" against the GitHub API)
   dependencies.py        checks/installs yt-dlp + ffmpeg via pkexec
   config.py              settings persistence (~/.config/simple-yt-downloader)
   style.py                the app's CSS (rounded cards, accent color, etc.)
