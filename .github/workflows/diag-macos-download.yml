@@ -1,70 +1,63 @@
-name: Diagnose macOS lame download
+name: Diagnose macOS lame download 2
 
 on:
   workflow_dispatch:
 
 jobs:
-  diagnose:
+  replicate:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Environment basics
+      - name: Replicate exact build env (yt-dlp + brew) then run script with bash -x
         run: |
-          echo "== df =="; df -h / /private/tmp "$RUNNER_TEMP" 2>&1
-          echo "== ulimit -a =="; ulimit -a
-          echo "== curl =="; curl --version
-          echo "== type =="; type -a curl
-          echo "RUNNER_TEMP=$RUNNER_TEMP"
-          echo "== dd write test (100MB to RUNNER_TEMP) =="
-          dd if=/dev/zero of="$RUNNER_TEMP/ddtest.bin" bs=1M count=100 2>&1 && ls -l "$RUNNER_TEMP/ddtest.bin"
-          rm -f "$RUNNER_TEMP/ddtest.bin"
+          echo "== arch/curl info =="
+          arch
+          lipo -archs /usr/bin/curl 2>&1
+          echo "== env before =="
+          env | sort | grep -iE "curl|proxy|runner_temp|home" 
+          curl -L -o core/build/dist/engine/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" 2>/dev/null
+          ls -l core/build/dist/engine/yt-dlp
+          brew install pkg-config 2>&1 | tail -3
+          echo "== env after brew =="
+          env | sort | grep -iE "curl|proxy|runner_temp|home"
+          mkdir -p core/build/dist/engine
+          set +e
+          bash -x core/build/ffmpeg/build_ffmpeg.sh "$RUNNER_TEMP/ffmpeg-src" "$RUNNER_TEMP/ffmpeg-min" > "$RUNNER_TEMP/script.log" 2>&1
+          rc=$?
+          echo "script exit=$rc"
+          tail -40 "$RUNNER_TEMP/script.log"
+          echo "== forensics =="
+          ls -la "$RUNNER_TEMP/" 2>&1 | head -20
+          df -h "$RUNNER_TEMP"
+          umask
 
-      - name: Download from github.com (control, known-good)
+      - name: Isolate curl flags (s / retry)
         run: |
-          curl -v -L -o "$RUNNER_TEMP/ytdlp.bin" \
-            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" \
-            -w "http_code=%{http_code} size=%{size_download}\n" 2>&1 | tail -8
-          ls -l "$RUNNER_TEMP/ytdlp.bin"
-          rm -f "$RUNNER_TEMP/ytdlp.bin"
+          rm -f "$RUNNER_TEMP/x1.bin" "$RUNNER_TEMP/x2.bin" "$RUNNER_TEMP/x3.bin"
+          echo "== plain -o =="
+          curl -L -o "$RUNNER_TEMP/x1.bin" "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/lame_3.100.orig.tar.gz" -w "rc0 code=%{http_code} size=%{size_download}\n"; echo "rc=$?"
+          ls -l "$RUNNER_TEMP/x1.bin"
+          echo "== -fsSL no retry =="
+          curl -fsSL -o "$RUNNER_TEMP/x2.bin" "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/lame_3.100.orig.tar.gz" -w "rc0 code=%{http_code} size=%{size_download}\n"; echo "rc=$?"
+          ls -l "$RUNNER_TEMP/x2.bin"
+          echo "== -fsSL --retry 3 --retry-delay 2 =="
+          curl -fsSL --retry 3 --retry-delay 2 -o "$RUNNER_TEMP/x3.bin" "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/lame_3.100.orig.tar.gz" -w "rc0 code=%{http_code} size=%{size_download}\n"; echo "rc=$?"
+          ls -l "$RUNNER_TEMP/x3.bin"
 
-      - name: Download lame from archive.ubuntu.com (verbose)
+      - name: Download to the exact script destination path
         run: |
-          rm -f "$RUNNER_TEMP/t-ubuntu.bin" "$RUNNER_TEMP/curl-ubuntu.log"
-          curl -v -L -o "$RUNNER_TEMP/t-ubuntu.bin" \
+          rm -f "$RUNNER_TEMP/lame-3.100.tar.gz"
+          curl -fsSL --retry 3 --retry-delay 2 -o "$RUNNER_TEMP/lame-3.100.tar.gz" \
             "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/lame_3.100.orig.tar.gz" \
-            -w "http_code=%{http_code} size=%{size_download} errormsg=%{errormsg}\n" \
-            2>&1 | tee "$RUNNER_TEMP/curl-ubuntu.log"
-          echo "== result file =="
-          ls -l "$RUNNER_TEMP/t-ubuntu.bin" 2>&1
-          file "$RUNNER_TEMP/t-ubuntu.bin" 2>&1
-          echo "== first 80 bytes =="
-          head -c 80 "$RUNNER_TEMP/t-ubuntu.bin" 2>&1 | xxd
+            -w "code=%{http_code} size=%{size_download}\n"; echo "rc=$?"
+          ls -l "$RUNNER_TEMP/lame-3.100.tar.gz" 2>&1
 
-      - name: Download lame from deb.debian.org
+      - name: Download after brew only
         run: |
-          rm -f "$RUNNER_TEMP/t-debian.bin"
-          curl -v -L -o "$RUNNER_TEMP/t-debian.bin" \
-            "https://deb.debian.org/debian/pool/main/l/lame/lame_3.100.orig.tar.gz" \
-            -w "http_code=%{http_code} size=%{size_download} errormsg=%{errormsg}\n" 2>&1 | tail -6
-          ls -l "$RUNNER_TEMP/t-debian.bin" 2>&1
-
-      - name: Download lame forcing HTTP/1.1
-        run: |
-          rm -f "$RUNNER_TEMP/t-http11.bin"
-          curl --http1.1 -L -o "$RUNNER_TEMP/t-http11.bin" \
+          brew install pkg-config 2>&1 | tail -1
+          rm -f "$RUNNER_TEMP/y1.bin"
+          curl -fsSL --retry 3 --retry-delay 2 -o "$RUNNER_TEMP/y1.bin" \
             "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/lame_3.100.orig.tar.gz" \
-            -w "http_code=%{http_code} size=%{size_download} errormsg=%{errormsg}\n" 2>&1 | tail -6
-          ls -l "$RUNNER_TEMP/t-http11.bin" 2>&1
-
-      - name: Download lame with python3 urllib
-        run: |
-          python3 - <<'EOF'
-          import urllib.request, os
-          url = "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/lame_3.100.orig.tar.gz"
-          with urllib.request.urlopen(url, timeout=60) as r:
-              data = r.read()
-          print("python3 got", len(data), "bytes")
-          open("/tmp/t-python.bin", "wb").write(data)
-          print("written", os.path.getsize("/tmp/t-python.bin"))
-          EOF
+            -w "code=%{http_code} size=%{size_download}\n"; echo "rc=$?"
+          ls -l "$RUNNER_TEMP/y1.bin" 2>&1
