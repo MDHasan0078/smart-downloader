@@ -20,27 +20,40 @@ jobs:
         with:
           channel: stable
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          python-version: "3.12"
+          go-version-file: core-go/go.mod
 
       - name: Build engine binary
-        run: |
-          python -m venv core/.venv
-          core/.venv/Scripts/pip install --quiet pyinstaller
-          core/.venv/Scripts/pyinstaller core/build/windows/engine.spec --noconfirm `
-            --distpath core/build/dist --workpath core/build/_pyinstaller_windows
         shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:GITHUB_WORKSPACE/core/build/dist/engine" | Out-Null
+          Push-Location "$env:GITHUB_WORKSPACE/core-go"
+          go build -o "$env:GITHUB_WORKSPACE/core/build/dist/engine/engine.exe" .
+          Pop-Location
+
+      - name: Build minimal ffmpeg (MSYS2)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-lame
+            mingw-w64-x86_64-opus
 
       - name: Bundle yt-dlp + ffmpeg next to engine
+        shell: msys2 {0}
         run: |
-          $bundle = "core/build/dist/engine"
-          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$bundle/yt-dlp.exe"
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip" -OutFile "$env:TEMP/ffmpeg.zip"
-          Expand-Archive -Path "$env:TEMP/ffmpeg.zip" -DestinationPath "$env:TEMP/ffmpeg" -Force
-          Copy-Item "$env:TEMP/ffmpeg/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe" "$bundle/ffmpeg.exe"
-        shell: pwsh
+          bundle="core/build/dist/engine"
+          curl -L -o "$bundle/yt-dlp.exe" "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+          ./core/build/ffmpeg/build_ffmpeg.sh /tmp/ffmpeg-src /tmp/ffmpeg-min
+          cp /tmp/ffmpeg-min/bin/ffmpeg.exe /tmp/ffmpeg-min/bin/ffprobe.exe "$bundle/"
+          ls -lh "$bundle"
 
       - name: Flutter pub get
         run: flutter pub get
@@ -92,24 +105,23 @@ jobs:
         with:
           channel: stable
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          python-version: "3.12"
+          go-version-file: core-go/go.mod
 
       - name: Build engine binary
         run: |
-          python3 -m venv core/.venv
-          core/.venv/bin/pip install --quiet pyinstaller yt-dlp
-          core/.venv/bin/pyinstaller core/build/macos/engine.spec --noconfirm \
-            --distpath core/build/dist --workpath core/build/_pyinstaller_macos
+          mkdir -p core/build/dist/engine
+          cd core-go && go build -o ../core/build/dist/engine/engine .
 
-      - name: Bundle yt-dlp + ffmpeg next to engine
+      - name: Build minimal ffmpeg + bundle yt-dlp next to engine
         run: |
-          cp core/.venv/bin/yt-dlp core/build/dist/engine/yt-dlp
-          brew install ffmpeg
-          cp "$(brew --prefix ffmpeg)/bin/ffmpeg" core/build/dist/engine/ffmpeg
-          chmod +x core/build/dist/engine/yt-dlp core/build/dist/engine/ffmpeg
+          curl -L -o core/build/dist/engine/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+          brew install pkg-config
+          bash core/build/ffmpeg/build_ffmpeg.sh /tmp/ffmpeg-src /tmp/ffmpeg-min
+          cp /tmp/ffmpeg-min/bin/ffmpeg /tmp/ffmpeg-min/bin/ffprobe core/build/dist/engine/
+          chmod +x core/build/dist/engine/yt-dlp core/build/dist/engine/ffmpeg core/build/dist/engine/ffprobe
 
       - name: Flutter pub get
         run: flutter pub get

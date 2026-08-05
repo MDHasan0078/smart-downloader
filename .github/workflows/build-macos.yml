@@ -12,32 +12,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          python-version: "3.12"
+          go-version-file: core-go/go.mod
 
       - name: Build engine binary
         run: |
-          python3 -m venv core/.venv
-          core/.venv/bin/pip install --quiet pyinstaller yt-dlp
-          core/.venv/bin/pyinstaller core/build/macos/engine.spec --noconfirm \
-            --distpath core/build/dist --workpath core/build/_pyinstaller_macos
+          mkdir -p core/build/dist/engine
+          cd core-go && go build -o ../core/build/dist/engine/engine .
 
-      - name: Bundle yt-dlp + ffmpeg next to engine
+      - name: Build minimal ffmpeg + bundle yt-dlp next to engine
         run: |
-          cp core/.venv/bin/yt-dlp core/build/dist/engine/yt-dlp
-          brew install ffmpeg
-          cp "$(brew --prefix ffmpeg)/bin/ffmpeg" core/build/dist/engine/ffmpeg
-          chmod +x core/build/dist/engine/yt-dlp core/build/dist/engine/ffmpeg
+          curl -L -o core/build/dist/engine/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+          brew install pkg-config
+          bash core/build/ffmpeg/build_ffmpeg.sh /tmp/ffmpeg-src /tmp/ffmpeg-min
+          cp /tmp/ffmpeg-min/bin/ffmpeg /tmp/ffmpeg-min/bin/ffprobe core/build/dist/engine/
+          chmod +x core/build/dist/engine/yt-dlp core/build/dist/engine/ffmpeg core/build/dist/engine/ffprobe
 
       - name: Smoke test (ping + deps + metadata)
         run: |
           cd core/build/dist/engine
+          ./ffmpeg -version 2>/dev/null | head -1 || exit 1
+          ./ffprobe -version 2>/dev/null | head -1 || exit 1
           printf '{"id":1,"cmd":"ping"}\n' | ./engine
-          printf '{"id":2,"cmd":"check_deps"}\n' | PATH="$PWD:$PATH" ./engine
+          printf '{"id":2,"cmd":"check_deps"}\n' | ./engine
           printf '{"id":3,"cmd":"get_info","url":"https://www.youtube.com/watch?v=jNQXAC9IVRw"}\n' \
-            | PATH="$PWD:$PATH" ./engine
+            | ./engine
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
