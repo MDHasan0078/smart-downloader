@@ -182,8 +182,8 @@ class SettingsView(Gtk.Box):
 
         desc = Gtk.Label(label="Smart Downloader — a fast, lightweight, open-source "
                                "YouTube downloader. Every quality from 144p to 10K, "
-                               "selectable 30/60/90 fps, playlist support and "
-                               "pause/resume. Built on yt-dlp + ffmpeg.")
+                               "custom resolution support, selectable 30/60/90 fps, "
+                               "playlist support and pause/resume.")
         desc.set_xalign(0)
         desc.set_line_wrap(True)
         desc.get_style_context().add_class("about-desc")

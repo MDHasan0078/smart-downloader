@@ -8,5 +8,5 @@ Homepage: https://github.com/MDHasan0078/smart-downloader
 Depends: python3, python3-gi, gir1.2-gtk-3.0, yt-dlp, ffmpeg, policykit-1
 Description: Fast, lightweight, open-source YouTube downloader.
  Smart Downloader is a fast, lightweight, open-source YouTube downloader.
- Every quality from 144p to 10K, selectable 30/60/90 fps, playlist support
- and pause/resume. Built on yt-dlp + ffmpeg.
+ Every quality from 144p to 10K, custom resolution support, selectable
+ 30/60/90 fps, playlist support and pause/resume.

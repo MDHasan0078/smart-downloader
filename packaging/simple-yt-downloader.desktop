@@ -2,7 +2,7 @@
 Version=1.0
 Type=Application
 Name=Simple YT Downloader
-Comment=Fast, lightweight, open-source YouTube downloader (144p-10K, 30/60/90 fps)
+Comment=Fast, lightweight, open-source YouTube downloader (144p-10K, custom resolution, 30/60/90 fps)
 Exec=/usr/bin/simple-yt-downloader
 Icon=simple-yt-downloader
 Categories=Network;Video;AudioVideo;

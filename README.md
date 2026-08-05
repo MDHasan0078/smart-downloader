@@ -3,8 +3,8 @@
 [![Latest release](https://img.shields.io/github/v/release/MDHasan0078/smart-downloader?label=latest)](https://github.com/MDHasan0078/smart-downloader/releases)
 
 Smart Downloader — a fast, lightweight, open-source YouTube downloader.
-Every quality from 144p to 10K, selectable 30/60/90 fps, playlist support
-and pause/resume. Built on [yt-dlp](https://github.com/yt-dlp/yt-dlp) + ffmpeg.
+Every quality from 144p to 10K, custom resolution support, selectable
+30/60/90 fps, playlist support and pause/resume.
 
 Single persistent window, no popup-dialog chains. Runs on Debian/Ubuntu-based
 Linux distros (tested on Linux Mint).
