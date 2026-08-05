@@ -115,6 +115,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: "app/build/*Setup.exe"
+          overwrite: true
 
   build-flutter-macos:
     runs-on: macos-latest
@@ -175,6 +176,7 @@ jobs:
           cd app/build/macos/Build/Products
           hdiutil attach -nobrowse -mountpoint /tmp/sd-dmg SmartDownloader.dmg
           APP="/tmp/sd-dmg/Smart Downloader.app"
+          [ -d "$APP" ] || APP="/tmp/sd-dmg/smart_downloader.app"
           for f in engine/engine engine/ffmpeg engine/ffprobe engine/yt-dlp; do
             if [ ! -x "$APP/Contents/Resources/$f" ]; then
               echo "missing: $f"
@@ -196,3 +198,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: "app/build/macos/Build/Products/SmartDownloader.dmg"
+          overwrite: true
