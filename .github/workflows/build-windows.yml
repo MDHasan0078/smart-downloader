@@ -47,7 +47,7 @@ jobs:
           bundle="core/build/dist/engine"
           curl -L -o "$bundle/yt-dlp.exe" "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
           ./core/build/ffmpeg/build_ffmpeg.sh /tmp/ffmpeg-src /tmp/ffmpeg-min
-          cp /tmp/ffmpeg-min/bin/ffmpeg.exe /tmp/ffmpeg-min/bin/ffprobe.exe "$bundle/"
+          cp /tmp/ffmpeg-min/bin/* "$bundle/"
           ls -lh "$bundle"
 
       - name: Smoke test (ping + deps + metadata)

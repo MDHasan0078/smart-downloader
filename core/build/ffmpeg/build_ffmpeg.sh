@@ -47,11 +47,6 @@ download_tarball() {
 
 EXTRA_CFLAGS=""
 EXTRA_LDFLAGS=""
-EXTRA_LIBS=""
-
-if [ -n "${MSYSTEM:-}" ] && [ -n "${MSYSTEM_PREFIX:-}" ]; then
-  EXTRA_LIBS="-static-libgcc -static-libwinpthread"
-fi
 
 # macOS: Homebrew lame/opus are dylibs (leak onto brew Cellar paths). Build
 # static archives from source so the ffmpeg binary is self-contained.
@@ -106,7 +101,6 @@ cd "$SRC_DIR"
   --prefix="$PREFIX" \
   --extra-cflags="$EXTRA_CFLAGS" \
   --extra-ldflags="$EXTRA_LDFLAGS" \
-  --extra-libs="$EXTRA_LIBS" \
   --prefix="$PREFIX" \
   --disable-everything \
   --disable-doc \

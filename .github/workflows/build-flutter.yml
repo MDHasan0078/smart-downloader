@@ -52,7 +52,7 @@ jobs:
           bundle="core/build/dist/engine"
           curl -L -o "$bundle/yt-dlp.exe" "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
           ./core/build/ffmpeg/build_ffmpeg.sh /tmp/ffmpeg-src /tmp/ffmpeg-min
-          cp /tmp/ffmpeg-min/bin/ffmpeg.exe /tmp/ffmpeg-min/bin/ffprobe.exe "$bundle/"
+          cp /tmp/ffmpeg-min/bin/* "$bundle/"
           ls -lh "$bundle"
 
       - name: Flutter pub get
@@ -119,8 +119,8 @@ jobs:
         run: |
           curl -L -o core/build/dist/engine/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
           brew install pkg-config
-          bash core/build/ffmpeg/build_ffmpeg.sh /tmp/ffmpeg-src /tmp/ffmpeg-min
-          cp /tmp/ffmpeg-min/bin/ffmpeg /tmp/ffmpeg-min/bin/ffprobe core/build/dist/engine/
+          bash core/build/ffmpeg/build_ffmpeg.sh "$RUNNER_TEMP/ffmpeg-src" "$RUNNER_TEMP/ffmpeg-min"
+          cp "$RUNNER_TEMP/ffmpeg-min/bin/ffmpeg" "$RUNNER_TEMP/ffmpeg-min/bin/ffprobe" core/build/dist/engine/
           chmod +x core/build/dist/engine/yt-dlp core/build/dist/engine/ffmpeg core/build/dist/engine/ffprobe
 
       - name: Flutter pub get
