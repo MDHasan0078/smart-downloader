@@ -13,6 +13,7 @@ NAMES = [
     "view-refresh", "pan-up", "pan-down", "window-close", "emblem-ok",
     "dialog-error", "folder", "folder-download", "emblem-system",
     "weather-clear", "weather-clear-night", "go-previous", "image-missing",
+    "software-update-available",
 ]
 THEMES = {"light": "#2e3436", "dark": "#fdfdfd", "accent": "#3584e4"}
 SIZES = (16, 32)

@@ -100,11 +100,6 @@ def _set_button_icon(btn, icon_name):
     btn.show_all()
 
 
-def _set_image_icon(image, icon_name, size=Gtk.IconSize.MENU):
-    name = icon_name if _icon_theme_has(icon_name) else "image-missing"
-    image.set_from_icon_name(name, size)
-
-
 class LoadingRow(Gtk.Box):
     """Placeholder shown while a pasted link is being probed."""
 
@@ -341,6 +336,7 @@ class VideoRow(Gtk.Box):
             settings["cookies_file"] if settings.get("use_cookies") else None,
         )
         self._started = False
+        self._cancelled_handled = False
 
         self.quality_bar = ModeQualityBar(settings)
         self.pack_start(self.quality_bar, False, False, 0)
@@ -362,6 +358,16 @@ class VideoRow(Gtk.Box):
         self.status_label.set_xalign(0)
         self.status_label.get_style_context().add_class("status-text")
         status_row.pack_start(self.status_label, True, True, 0)
+
+        # Far-right clear button: shown only while this row sits in the
+        # Completed tab (finished, cancelled, or promoted). First pack_end
+        # in the cluster keeps it at the far right.
+        self.clear_btn = _icon_button("window-close-symbolic", "Remove from list")
+        self.clear_btn.get_style_context().add_class("destructive-icon")
+        self.clear_btn.connect("clicked", self._on_clear_clicked)
+        self.clear_btn.set_no_show_all(True)
+        self.clear_btn.set_visible(False)
+        status_row.pack_end(self.clear_btn, False, False, 0)
 
         self.start_btn = Gtk.Button(label="Start")
         self.start_btn.get_style_context().add_class("suggested-action")
@@ -432,6 +438,8 @@ class VideoRow(Gtk.Box):
         formats, duration = info["formats"], info["duration"]
         if not formats:
             return
+        if self.get_parent() is None:
+            return  # row was dismissed/cleared while this thread ran
         video_sizes = estimate_quality_sizes(formats)
         video_text = {tier: _fmt_size(b) for tier, b in video_sizes.items()}
         GLib.idle_add(self.quality_bar.set_video_quality_sizes, video_text)
@@ -440,11 +448,15 @@ class VideoRow(Gtk.Box):
         GLib.idle_add(self.quality_bar.set_audio_quality_sizes, audio_text)
 
     def _on_probe_error(self, message):
+        if self._cancelled_handled:
+            return False
         self.title_label.set_text(f"⚠ {message}")
         self.start_btn.set_visible(False)
         return False
 
     def _on_probe_done(self):
+        if self._cancelled_handled:
+            return False
         self.title_label.set_text(self.task.title or "Untitled")
         size = self.task.size_str or ""
         self.status_label.set_text(size)
@@ -463,8 +475,10 @@ class VideoRow(Gtk.Box):
             self.task.audio_quality = quality
 
         self._started = True
+        self._cancelled_handled = False
         self.quality_bar.set_sensitive_all(False)
         self.start_btn.set_visible(False)
+        self.clear_btn.set_visible(False)
         self.progress.set_visible(True)
         self.pause_btn.set_visible(True)
         self.status_label.set_text("Starting...")
@@ -500,28 +514,70 @@ class VideoRow(Gtk.Box):
             self.progress.set_fraction(1.0)
             self.status_label.set_text("Complete")
             self.cancel_btn.set_visible(False)
+            self.clear_btn.set_visible(True)
             self.on_state_change(self, "completed")
+        elif message == "Cancelled" or self.task.cancelled:
+            self._finish_cancelled()
         else:
             self.status_label.set_text(f"Failed: {message.splitlines()[-1] if message else 'error'}")
             self.progress.get_style_context().add_class("error")
-            if message != "Cancelled":
-                self.retry_btn.set_visible(True)
+            self.retry_btn.set_visible(True)
         return False
 
+    def _finish_cancelled(self):
+        """Transition a cancelled row to the Completed tab with a Retry
+        button (never delete it). Idempotent so a synchronous transition
+        (never-started task) and the late async 'Cancelled' callback can
+        both run without double-moving the row."""
+        if self._cancelled_handled:
+            return
+        self._cancelled_handled = True
+        self.status_label.set_text("Cancelled")
+        self.cancel_btn.set_visible(False)
+        self.pause_btn.set_visible(False)
+        self.start_btn.set_visible(False)
+        self.retry_btn.set_visible(True)
+        self.clear_btn.set_visible(True)
+        self.quality_bar.set_sensitive_all(True)
+        self.on_state_change(self, "completed")
+
     def _on_retry_clicked(self, _btn):
-        """Re-runs the same download from scratch with the same
-        format/quality that was already selected -- resets the task's
-        internal state (a DownloadTask isn't designed to reuse a dead
-        process handle) rather than creating a new row."""
+        """Re-runs the same download from scratch. Moves the row back to
+        the Ongoing tab first (a row retried from Completed downloads
+        there), re-reads the quality selection -- the bar is unlocked on
+        cancelled rows -- and clears the cancelled flag the start() guard
+        requires."""
+        if self.get_parent() is None:
+            return  # row was cleared out of Completed -- don't resurrect it
+        self._cancelled_handled = False
+        self.task.cancelled = False
+        self.task.process = None
+
+        mode, fmt, quality, fps = self.quality_bar.get_selection()
+        self.task.mode = mode
+        if mode == "video":
+            self.task.video_format = fmt
+            self.task.video_quality = quality
+            self.task.video_fps = fps
+        else:
+            self.task.audio_format = fmt
+            self.task.audio_quality = quality
+        self._started = True
+
         self.retry_btn.set_visible(False)
+        self.clear_btn.set_visible(False)
         self.progress.get_style_context().remove_class("error")
         self.progress.set_fraction(0.0)
         self.status_label.set_text("Retrying...")
         self.cancel_btn.set_visible(True)
         self.pause_btn.set_visible(True)
+        self.quality_bar.set_sensitive_all(False)
 
-        # DownloadTask.start() resets paused/cancelled/log_lines itself.
-        self.task.process = None
+        # Move the row into Ongoing before the download thread starts, so
+        # the first idle-marshaled on_finished lands on a row in the right
+        # tab (a no-op when the row is already in Ongoing, e.g. a failed
+        # download retried in place).
+        self.on_state_change(self, "active")
 
         threading.Thread(target=self._run_download, daemon=True).start()
 
@@ -547,7 +603,21 @@ class VideoRow(Gtk.Box):
         self.pause_btn.set_tooltip_text(tooltip)
 
     def _on_cancel_clicked(self, _btn):
+        if self._cancelled_handled:
+            return
         self.task.cancel()
+        if self.task.process is None:
+            # Never started (or in the cancel-before-spawn race window) --
+            # no on_finished callback will ever fire, so transition
+            # synchronously. The start() refuse-to-start guard guarantees a
+            # late callback can't double-fire this.
+            self._finish_cancelled()
+
+    def _on_clear_clicked(self, _btn):
+        """Dismiss this row from the Completed tab permanently (UI-only;
+        the file on disk is untouched). Belt-and-braces flag blocks any
+        hypothetical late transition from re-packing the row."""
+        self._cancelled_handled = True
         self.on_state_change(self, "removed")
 
     def _on_logs_toggled(self, _btn):
@@ -575,9 +645,19 @@ class PlaylistRow(Gtk.Box):
         self.settings = settings
         self.on_state_change = on_state_change
         self.entries = entries
+        self.playlist_title = playlist_title
         self.cancelled = False
+        self._started = False
+        self._cancelled_handled = False
         self.current_task = None
         self.current_idx = None
+        # Indices that finished successfully -- survives cancel/retry so a
+        # resumed playlist skips what's already downloaded.
+        self.done = set()
+        # Original indices removed via each child's ✕ button -- tracked as a
+        # set of stable indices rather than popping the lists, so the
+        # sequential runner's index bookkeeping never shifts underneath it.
+        self.removed = set()
         # Per-entry "hold" flags: a video marked held is skipped by the
         # runner even once its turn comes up, until un-held. This is what
         # lets you pause a video BEFORE it starts downloading, not just the
@@ -608,9 +688,23 @@ class PlaylistRow(Gtk.Box):
         self.cancel_btn = _icon_button("process-stop-symbolic", "Cancel playlist")
         self.cancel_btn.get_style_context().add_class("destructive-icon")
         self.cancel_btn.connect("clicked", self._on_cancel_clicked)
-        self.cancel_btn.set_no_show_all(True)
-        self.cancel_btn.set_visible(False)
         header.pack_start(self.cancel_btn, False, False, 0)
+
+        self.retry_btn = _icon_button("view-refresh-symbolic", "Retry playlist")
+        self.retry_btn.connect("clicked", self._on_playlist_retry_clicked)
+        self.retry_btn.set_no_show_all(True)
+        self.retry_btn.set_visible(False)
+        header.pack_start(self.retry_btn, False, False, 0)
+
+        # Far-right clear button: shown only while this row sits in the
+        # Completed tab. Packed last so it lands at the far right of the
+        # button cluster.
+        self.clear_btn = _icon_button("window-close-symbolic", "Remove from list")
+        self.clear_btn.get_style_context().add_class("destructive-icon")
+        self.clear_btn.connect("clicked", self._on_playlist_clear_clicked)
+        self.clear_btn.set_no_show_all(True)
+        self.clear_btn.set_visible(False)
+        header.pack_start(self.clear_btn, False, False, 0)
 
         self.pack_start(header, False, False, 0)
 
@@ -689,6 +783,8 @@ class PlaylistRow(Gtk.Box):
             scaled = int(v * scale)
             text = _fmt_size(scaled)
             video_text[tier] = f"~{text}" if is_estimate else text
+        if self.get_parent() is None:
+            return  # playlist dismissed/cleared while the thread ran
         GLib.idle_add(self.quality_bar.set_video_quality_sizes, video_text)
 
         audio_summed = sum_quality_sizes(per_video_audio_sizes, tiers=AUDIO_QUALITY_TIERS)
@@ -705,8 +801,10 @@ class PlaylistRow(Gtk.Box):
         row = Gtk.ListBoxRow()
         row.set_selectable(False)
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        icon = Gtk.Image.new_from_icon_name("media-record-symbolic", Gtk.IconSize.MENU)
-        box.pack_start(icon, False, False, 0)
+        index_label = Gtk.Label(label=str(idx + 1))
+        index_label.get_style_context().add_class("child-index")
+        index_label.set_xalign(0)
+        box.pack_start(index_label, False, False, 0)
         label = Gtk.Label(label=title)
         label.set_xalign(0)
         label.set_ellipsize(Pango.EllipsizeMode.END)
@@ -728,11 +826,17 @@ class PlaylistRow(Gtk.Box):
         retry_btn.set_visible(False)
         box.pack_start(retry_btn, False, False, 0)
 
+        remove_btn = _icon_button("window-close-symbolic", "Cancel this video")
+        remove_btn.get_style_context().add_class("destructive-icon")
+        remove_btn.connect("clicked", self._on_child_remove_clicked, idx)
+        box.pack_start(remove_btn, False, False, 0)
+
         row.add(box)
-        row._icon = icon
+        row._index_label = index_label
         row._status_label = status_label
         row._pause_btn = pause_btn
         row._retry_btn = retry_btn
+        row._remove_btn = remove_btn
         row._status_state = "queued"
         return row
 
@@ -746,15 +850,18 @@ class PlaylistRow(Gtk.Box):
         mode, fmt, quality, fps = self.quality_bar.get_selection()
         self._mode, self._fmt, self._quality, self._fps = mode, fmt, quality, fps
         self.quality_bar.set_sensitive_all(False)
+        self._started = True
         self.start_btn.set_visible(False)
+        self.clear_btn.set_visible(False)
         self.pause_btn.set_visible(True)
         self.cancel_btn.set_visible(True)
         threading.Thread(target=self._run_playlist, daemon=True).start()
 
     def _run_playlist(self):
         total = len(self.entries)
-        completed = 0
-        pending = list(range(total))
+        # Seed from state rather than always [0..total): a retried playlist
+        # skips what already finished and what the user removed.
+        pending = [i for i in range(total) if i not in self.removed and i not in self.done]
 
         while pending:
             if self.cancelled:
@@ -764,10 +871,16 @@ class PlaylistRow(Gtk.Box):
             # held, wait and recheck periodically (the user might un-hold
             # one at any time).
             next_i = None
+            remaining = 0
             for i in pending:
+                if i in self.removed:
+                    continue
+                remaining += 1
                 if not self.held[i]:
                     next_i = i
                     break
+            if remaining == 0:
+                break  # everything left was removed; nothing to run
             if next_i is None:
                 time.sleep(0.5)
                 continue
@@ -798,37 +911,49 @@ class PlaylistRow(Gtk.Box):
             def on_progress(info, idx=i):
                 GLib.idle_add(self._on_child_progress, idx, info)
 
-            task.start(on_progress, lambda s, m: None)
+            outcome = {}
+
+            def on_finished(success, message, holder=outcome):
+                holder["success"] = success
+
+            try:
+                task.start(on_progress, on_finished)
+            except Exception:
+                outcome["success"] = False
 
             # A cancel signal either came in while this child was still
             # queued (loop broke above) or stopped the in-flight task --
             # mark the current child "cancelled" rather than "failed".
-            success = (not self.cancelled) and task.process and task.process.returncode == 0
-            if i < len(self.child_rows):
+            success = (not self.cancelled) and outcome.get("success", False)
+            if i in self.removed:
+                pass  # the child's row was destroyed mid-download
+            elif i < len(self.child_rows):
                 if self.cancelled:
                     GLib.idle_add(self._set_child_status, i, "cancelled", 100)
                 else:
                     GLib.idle_add(self._set_child_status, i, "done" if success else "failed", 100)
-            if success:
-                completed += 1
+            if success and i not in self.removed:
+                self.done.add(i)
             self.current_task = None
             self.current_idx = None
-            GLib.idle_add(self._on_overall_progress, completed, total)
+            GLib.idle_add(self._on_overall_progress, len(self.done), total)
 
-        GLib.idle_add(self._on_playlist_finished, completed, total, self.cancelled)
+        if self.cancelled:
+            # Mark everything the user never got to as "cancelled" so the
+            # completed-row summary matches what actually happened.
+            for i in range(total):
+                if i in self.removed or i in self.done:
+                    continue
+                if i < len(self.child_rows):
+                    GLib.idle_add(self._set_child_status, i, "cancelled", 0)
+
+        GLib.idle_add(self._on_playlist_finished, len(self.done), total, self.cancelled)
 
     def _set_child_status(self, idx, status, percent):
+        if idx in self.removed or idx >= len(self.child_rows):
+            return False  # row was removed via ✕ before this callback ran
         row = self.child_rows[idx]
         row._status_state = status
-        icon_name = {
-            "queued": "media-record-symbolic",
-            "held": "media-playback-pause-symbolic",
-            "downloading": "media-playback-start-symbolic",
-            "done": "emblem-ok-symbolic",
-            "failed": "dialog-error-symbolic",
-            "cancelled": "process-stop-symbolic",
-        }.get(status, "media-record-symbolic")
-        _set_image_icon(row._icon, icon_name)
         text = {
             "queued": "Queued", "held": "Held", "downloading": "Downloading...",
             "done": "Done", "failed": "Failed", "cancelled": "Cancelled",
@@ -845,7 +970,7 @@ class PlaylistRow(Gtk.Box):
         runner has already moved past this index by the time it's failed,
         so this spins up its own one-off DownloadTask rather than trying
         to re-insert it into the already-running queue."""
-        if self.cancelled:
+        if self.cancelled or idx in self.removed:
             return
         if idx >= len(self.entries):
             return
@@ -870,12 +995,72 @@ class PlaylistRow(Gtk.Box):
         GLib.idle_add(self._set_child_status, idx, "downloading", 0)
         threading.Thread(target=self._run_single_retry, args=(task, idx), daemon=True).start()
 
+    def _promote_removed_child(self, idx):
+        """Park a ✕-cancelled playlist child in the Completed tab as a
+        standalone, cancelled VideoRow (status "Cancelled", Retry button,
+        unlocked quality bar) -- identical to a cancelled single video, so an
+        accidental removal is always recoverable. The playlist queue keeps
+        skipping this index via self.removed, so Retry never double-
+        downloads. Runs on the UI thread; wrapped in try/except so the ✕
+        handler can never fail to remove the child if promotion hiccups."""
+        if idx >= len(self.entries):
+            return
+        try:
+            entry = self.entries[idx]
+            task = DownloadTask(
+                entry["url"],
+                self.settings["download_dir"],
+                self.settings["cookies_file"] if self.settings.get("use_cookies") else None,
+            )
+            task.title = f"{self.playlist_title} — {entry['title']}"
+            # Coherent cancelled state: start()'s guard refuses to run it;
+            # the promoted row's Retry clears task.cancelled (row_widgets).
+            task.cancel()
+            row = VideoRow(
+                entry["url"],
+                self.settings,
+                self.on_state_change,
+                preprobed_task=task,
+                skip_quality_sizes=True,  # no network / size-hint thread on removal
+            )
+            # Transition to Completed + "Cancelled" + Retry + unlocked quality
+            # bar via the exact single-video machinery.
+            row._finish_cancelled()
+            self.held[idx] = False
+        except Exception as e:
+            print(f"Couldn't recover removed video {idx}: {e}")
+            self.held[idx] = False
+
+    def _on_child_remove_clicked(self, _btn, idx):
+        """✕ on an individual video: cancels it and parks a standalone,
+        recoverable "Cancelled" row in the Completed tab (Retry + unlocked
+        quality selector). The playlist queue drops the index for good, so a
+        playlist retry won't re-download it. If it's the one downloading
+        right now, cancel it and the queue simply moves on."""
+        if idx in self.removed:
+            return
+        self.removed.add(idx)
+        if idx < len(self.child_rows):
+            self.child_rows[idx].destroy()
+        if idx == self.current_idx and self.current_task is not None:
+            self.current_task.cancel()
+        self._promote_removed_child(idx)
+        GLib.idle_add(self._on_overall_progress, len(self.done), len(self.entries))
+
     def _run_single_retry(self, task, idx):
         def on_progress(info, i=idx):
             GLib.idle_add(self._on_child_progress, i, info)
 
-        task.start(on_progress, lambda s, m: None)
-        success = task.process and task.process.returncode == 0
+        outcome = {}
+
+        def on_finished(success, message, holder=outcome):
+            holder["success"] = success
+
+        try:
+            task.start(on_progress, on_finished)
+        except Exception:
+            outcome["success"] = False
+        success = outcome.get("success", False)
         GLib.idle_add(self._set_child_status, idx, "done" if success else "failed", 100)
         if success:
             GLib.idle_add(self._on_retry_success_bump)
@@ -896,6 +1081,8 @@ class PlaylistRow(Gtk.Box):
         return False
 
     def _on_child_progress(self, idx, info):
+        if idx in self.removed:
+            return False  # row was removed mid-download
         if info.get("phase") == "merge":
             detail = info.get("phase_label") or "Merging…"
         else:
@@ -917,25 +1104,74 @@ class PlaylistRow(Gtk.Box):
         return False
 
     def _on_overall_progress(self, completed, total):
-        self.count_label.set_text(f"{completed} / {total}")
-        self.progress.set_fraction(completed / total if total else 0)
+        # Removing videos with ✕ shrinks the visible total; guard against a
+        # completed count that could momentarily exceed it.
+        effective = max(total - len(self.removed), 0)
+        shown = min(completed, effective)
+        self.count_label.set_text(f"{shown} / {effective}")
+        self.progress.set_fraction(shown / effective if effective else 0)
         return False
 
     def _on_playlist_finished(self, completed, total, cancelled=False):
+        self._cancelled_handled = True
         self.pause_btn.set_visible(False)
         self.cancel_btn.set_visible(False)
+        self.retry_btn.set_visible(cancelled)
+        self.clear_btn.set_visible(True)
+        # Cancelling a playlist parks it in Completed with the Retry button,
+        # exactly like a cancelled single video -- it must never be stranded
+        # or silently deleted once it has started.
+        self.quality_bar.set_sensitive_all(True)
         if cancelled:
             self.current_status_label.set_text(f"Cancelled: {completed}/{total} downloaded")
         else:
             self.current_status_label.set_text(f"Finished: {completed}/{total} downloaded")
-        if not cancelled and completed == total:
-            self.on_state_change(self, "completed")
+        self.on_state_change(self, "completed")
         return False
 
+    def _on_playlist_retry_clicked(self, _btn):
+        """Resumes a cancelled playlist, skipping videos that already
+        finished and videos the user removed with the per-child ✕ button.
+        Unfinished ones download from scratch."""
+        self.cancelled = False
+        self._cancelled_handled = False
+        self.held = [False] * len(self.entries)
+        self.current_task = None
+        self.current_idx = None
+        self.retry_btn.set_visible(False)
+        self.clear_btn.set_visible(False)
+        self.start_btn.set_visible(False)
+        self.pause_btn.set_visible(True)
+        self.cancel_btn.set_visible(True)
+        self.cancel_btn.set_sensitive(True)
+        mode, fmt, quality, fps = self.quality_bar.get_selection()
+        self._mode, self._fmt, self._quality, self._fps = mode, fmt, quality, fps
+        self.quality_bar.set_sensitive_all(False)
+        effective = max(len(self.entries) - len(self.removed), 0)
+        shown = min(len(self.done), effective)
+        self.count_label.set_text(f"{shown} / {effective}")
+        self.progress.set_fraction(shown / effective if effective else 0)
+        threading.Thread(target=self._run_playlist, daemon=True).start()
+
+    def _on_playlist_clear_clicked(self, _btn):
+        """Dismiss this playlist row from the Completed tab permanently
+        (UI-only; downloaded files on disk are untouched)."""
+        self._cancelled_handled = True
+        self.on_state_change(self, "removed")
+
     def _on_cancel_clicked(self, _btn):
-        """Stops the whole playlist: halts the runner (it breaks out of the
-        queue loop) and cancels whichever child is mid-download so the
-        blocking task.start() returns immediately."""
+        """Stops the whole playlist. Before it has ever started (wrong URL
+        pasted, not launched yet) the row is dismissed outright -- there is
+        nothing to resume. Once running, the runner breaks out of the queue
+        loop and the in-flight child is cancelled so the blocking
+        task.start() returns immediately; the row then lands in Completed
+        with a Retry button."""
+        if not self._started:
+            self._cancelled_handled = True
+            self.on_state_change(self, "removed")
+            return
+        if self._cancelled_handled:
+            return
         self.cancelled = True
         if self.current_task is not None:
             self.current_task.cancel()
@@ -964,7 +1200,7 @@ class PlaylistRow(Gtk.Box):
         This is the difference from _toggle_current_pause: that one signals
         a live process; this one just flags an entry the runner hasn't
         reached yet."""
-        if idx >= len(self.entries) or idx >= len(self.child_rows):
+        if idx in self.removed or idx >= len(self.entries) or idx >= len(self.child_rows):
             return
         row = self.child_rows[idx]
         if getattr(row, "_status_state", "queued") in ("done", "failed"):

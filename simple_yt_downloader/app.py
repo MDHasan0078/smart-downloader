@@ -1,15 +1,18 @@
 import re
 import threading
+import webbrowser
 
 import gi
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango
 
+from . import __version__
 from . import config as config_module
 from . import dependencies
 from . import icons
 from . import style
+from . import updater
 from .download_task import DownloadTask
 from .row_widgets import LoadingRow, PlaylistRow, VideoRow, _icon_theme_has
 from .settings_view import SettingsView
@@ -24,6 +27,17 @@ APP_TITLE = "Simple YT Downloader"
 _URL_SPLIT_RE = re.compile(r"[\s,]+")
 
 
+def _format_bytes(num):
+    """Human-friendly size for the download progress label."""
+    if not num:
+        return "0 B"
+    for unit in ("B", "KB", "MB", "GB"):
+        if num < 1024 or unit == "GB":
+            return f"{num:.1f} {unit}" if unit != "B" else f"{int(num)} B"
+        num /= 1024
+    return f"{num:.1f} GB"
+
+
 class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title=APP_TITLE)
@@ -34,12 +48,23 @@ class MainWindow(Gtk.ApplicationWindow):
         self._apply_theme(self.settings.get("theme", "dark"))
         style.apply()
 
+        self._pending_update_info = None
+        self._dl_dialog = None
+        self._dl_bar = None
+        self._dl_label = None
+        self._install_dialog = None
+
+        self.tab_stack = Gtk.Stack()
         self._build_headerbar()
 
         self.root_stack = Gtk.Stack()
         self.root_stack.set_hhomogeneous(False)
         self.root_stack.set_vhomogeneous(False)
-        self.add(self.root_stack)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        outer.pack_start(self.headerbar, False, False, 0)
+        outer.pack_start(self.root_stack, True, True, 0)
+        self.add(outer)
 
         self.main_view = self._build_main_view()
         self.root_stack.add_named(self.main_view, "main")
@@ -74,27 +99,47 @@ class MainWindow(Gtk.ApplicationWindow):
         height = min(640, int(screen_h * 0.80))
         self.set_default_size(width, height)
 
-    # ---- Window chrome ----------------------------------------------------
+    # ---- Window top bar --------------------------------------------------
 
     def _build_headerbar(self):
-        header = Gtk.HeaderBar()
-        header.set_show_close_button(True)
-        header.set_title(APP_TITLE)
-        self.set_titlebar(header)
+        # A slim in-window bar holding the tab switcher plus the update
+        # check, theme and settings buttons. The window manager draws the
+        # close/minimize/maximize buttons in the user's system theme (no
+        # set_titlebar() / CSD), so there's only ONE title bar -- not a
+        # Gtk.HeaderBar, which would render a second bar.
+        self.headerbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.headerbar.set_margin_top(6)
+        self.headerbar.set_margin_start(12)
+        self.headerbar.set_margin_end(10)
+
+        switcher = Gtk.StackSwitcher()
+        switcher.set_stack(self.tab_stack)
+        switcher.set_valign(Gtk.Align.CENTER)
+        self.headerbar.pack_start(switcher, False, False, 0)
 
         self.theme_btn = Gtk.Button()
         self.theme_btn.set_relief(Gtk.ReliefStyle.NONE)
         self.theme_btn.get_style_context().add_class("headerbar-btn")
         self._update_theme_icon()
         self.theme_btn.connect("clicked", self._on_theme_button_clicked)
-        header.pack_end(self.theme_btn)
+        self.headerbar.pack_end(self.theme_btn, False, False, 0)
 
         settings_btn = Gtk.Button()
         settings_btn.set_relief(Gtk.ReliefStyle.NONE)
         settings_btn.get_style_context().add_class("headerbar-btn")
         settings_btn.add(Gtk.Image.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.BUTTON))
         settings_btn.connect("clicked", lambda _b: self._open_settings())
-        header.pack_end(settings_btn)
+        self.headerbar.pack_end(settings_btn, False, False, 0)
+
+        self.update_btn = Gtk.Button()
+        self.update_btn.set_relief(Gtk.ReliefStyle.NONE)
+        self.update_btn.get_style_context().add_class("headerbar-btn")
+        self.update_btn.set_valign(Gtk.Align.CENTER)
+        self.update_btn.add(Gtk.Image.new_from_icon_name(
+            "software-update-available-symbolic", Gtk.IconSize.BUTTON))
+        self.update_btn.set_tooltip_text("Check for Updates")
+        self.update_btn.connect("clicked", self._on_check_updates)
+        self.headerbar.pack_end(self.update_btn, False, False, 0)
 
     def _update_theme_icon(self):
         theme = self.settings.get("theme", "dark")
@@ -104,6 +149,202 @@ class MainWindow(Gtk.ApplicationWindow):
             self.theme_btn.remove(child)
         self.theme_btn.add(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.BUTTON))
         self.theme_btn.show_all()
+
+    # ---- Update check (async) ------------------------------------------
+
+    def _on_check_updates(self, _btn):
+        self.update_btn.set_sensitive(False)
+
+        def worker():
+            info = updater.fetch_latest_release()
+            GLib.idle_add(self._on_update_check_done, info)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_update_check_done(self, info):
+        self.update_btn.set_sensitive(True)
+
+        if info is None:
+            self._show_info_dialog(
+                "Check Failed",
+                "Could not reach the update server. Please check your connection.",
+                message_type=Gtk.MessageType.ERROR,
+            )
+            return False
+
+        if updater.version_tuple(info["version"]) > updater.version_tuple(__version__):
+            dialog = Gtk.MessageDialog(
+                transient_for=self, flags=0,
+                message_type=Gtk.MessageType.QUESTION,
+                buttons=Gtk.ButtonsType.NONE,
+                text=f"Update available: v{info['version']}",
+            )
+            dialog.format_secondary_text(
+                f"You are running v{__version__}.\n\n"
+                "Download the latest release now, or open the release page instead."
+            )
+            dialog.add_button("Later", Gtk.ResponseType.CLOSE)
+            open_btn = dialog.add_button("Open Release Page", Gtk.ResponseType.NO)
+            dl_btn = dialog.add_button("Download & Install", Gtk.ResponseType.YES)
+            dl_btn.get_style_context().add_class("suggested-action")
+            response = dialog.run()
+            dialog.destroy()
+            if response == Gtk.ResponseType.YES:
+                self._start_update_download(info)
+            elif response == Gtk.ResponseType.NO:
+                webbrowser.open(info["release_url"])
+        else:
+            self._show_info_dialog(
+                "Up to date",
+                f"You are running the latest version (v{__version__}).",
+            )
+        return False
+
+    def _start_update_download(self, info):
+        """Begin streaming the .deb in the background; show a progress dialog."""
+        self._pending_update_info = info
+        version = info["version"]
+        deb_path = updater.deb_path(version)
+        dialog = Gtk.Dialog(
+            title=f"Downloading v{version}...",
+            transient_for=self,
+            modal=True,
+        )
+        dialog.get_content_area().set_spacing(10)
+        bar = Gtk.ProgressBar()
+        bar.set_show_text(True)
+        bar.set_text("Starting download...")
+        dialog.get_content_area().pack_start(bar, False, False, 0)
+        label = Gtk.Label(label="")
+        label.set_justify(Gtk.Justification.CENTER)
+        label.set_line_wrap(True)
+        dialog.get_content_area().pack_start(label, False, False, 0)
+        dialog.show_all()
+        self._dl_dialog = dialog
+        self._dl_bar = bar
+        self._dl_label = label
+
+        def worker():
+            def on_progress(downloaded, total):
+                def update_ui():
+                    if self._dl_bar is None:
+                        return False
+                    if total:
+                        self._dl_bar.set_fraction(downloaded / total if total else 0)
+                        self._dl_bar.set_text(
+                            f"{_format_bytes(downloaded)} / {_format_bytes(total)}"
+                        )
+                    else:
+                        self._dl_bar.pulse()
+                        self._dl_bar.set_text(_format_bytes(downloaded))
+                    return False
+
+                GLib.idle_add(update_ui)
+
+            try:
+                updater.download(info["deb_url"], deb_path, on_progress)
+            except updater.DownloadAborted:
+                GLib.idle_add(self._on_update_download_done, False, "Download cancelled.")
+                return
+            except updater.DownloadError as e:
+                GLib.idle_add(self._on_update_download_done, False, str(e))
+                return
+            except OSError as e:
+                GLib.idle_add(self._on_update_download_done, False, str(e))
+                return
+            GLib.idle_add(self._on_update_download_done, True, "")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_update_download_done(self, success, message):
+        dialog, self._dl_dialog = self._dl_dialog, None
+        self._dl_bar = None
+        self._dl_label = None
+        if dialog is not None:
+            dialog.destroy()
+
+        if not success:
+            self._show_info_dialog(
+                "Download failed",
+                message or "Could not download the update.",
+                message_type=Gtk.MessageType.ERROR,
+            )
+            return False
+
+        self._start_install()
+
+    def _start_install(self):
+        """Run apt-get via pkexec; the native polkit prompt is shown by pkexec."""
+        info = self._pending_update_info
+        if info is None:
+            self._show_info_dialog(
+                "Download failed",
+                "The update file could not be located after download.",
+                message_type=Gtk.MessageType.ERROR,
+            )
+            return
+
+        dialog = Gtk.Dialog(
+            title="Installing update...",
+            transient_for=self,
+            modal=True,
+        )
+        dialog.get_content_area().set_spacing(10)
+        bar = Gtk.Spinner()
+        bar.start()
+        dialog.get_content_area().pack_start(bar, False, False, 0)
+        label = Gtk.Label(
+            label="Installing via your system password prompt.\n"
+            "The app will close when the update is complete."
+        )
+        label.set_justify(Gtk.Justification.CENTER)
+        label.set_line_wrap(True)
+        dialog.get_content_area().pack_start(label, False, False, 0)
+        dialog.show_all()
+        self._install_dialog = dialog
+
+        deb_path = updater.deb_path(info["version"])
+
+        def worker():
+            def on_done(success, message):
+                GLib.idle_add(self._on_install_done, success, message, deb_path)
+
+            updater.install(deb_path, on_done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_install_done(self, success, message, deb_path):
+        updater.cleanup(deb_path)
+        dialog, self._install_dialog = self._install_dialog, None
+        if dialog is not None:
+            dialog.destroy()
+
+        if success:
+            self._show_info_dialog(
+                "Update complete",
+                message + "\nPlease restart the app to use the new version.",
+            )
+        else:
+            self._show_info_dialog(
+                "Install failed",
+                message,
+                message_type=Gtk.MessageType.ERROR,
+            )
+        return False
+
+    def _show_info_dialog(self, title, message, message_type=Gtk.MessageType.INFO):
+        if message_type is None:
+            message_type = (
+                Gtk.MessageType.ERROR if title == "Installation failed" else Gtk.MessageType.INFO
+            )
+        dialog = Gtk.MessageDialog(
+            transient_for=self, flags=0,
+            message_type=message_type,
+            buttons=Gtk.ButtonsType.OK, text=title,
+        )
+        dialog.format_secondary_text(message[:500])
+        dialog.run()
+        dialog.destroy()
 
     def _on_theme_button_clicked(self, _btn):
         current = self.settings.get("theme", "dark")
@@ -142,16 +383,12 @@ class MainWindow(Gtk.ApplicationWindow):
         box.set_margin_start(12)
         box.set_margin_end(12)
 
-        self.tab_stack = Gtk.Stack()
-        switcher = Gtk.StackSwitcher()
-        switcher.set_stack(self.tab_stack)
-        switcher.set_halign(Gtk.Align.START)
-        box.pack_start(switcher, False, False, 0)
+        add_section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
 
         add_label = Gtk.Label(label="Paste one or more links (one per line, or space/comma separated)")
         add_label.set_xalign(0)
         add_label.get_style_context().add_class("caption")
-        box.pack_start(add_label, False, False, 0)
+        add_section.pack_start(add_label, False, False, 0)
 
         add_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         url_scroller = Gtk.ScrolledWindow()
@@ -175,7 +412,10 @@ class MainWindow(Gtk.ApplicationWindow):
         add_btn.connect("clicked", self._on_add_clicked)
         add_btn.set_valign(Gtk.Align.CENTER)
         add_row.pack_start(add_btn, False, False, 0)
-        box.pack_start(add_row, False, False, 0)
+        add_section.pack_start(add_row, False, False, 0)
+
+        self.add_section = add_section
+        box.pack_start(add_section, False, False, 0)
 
         self.ongoing_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.completed_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -203,8 +443,8 @@ class MainWindow(Gtk.ApplicationWindow):
         completed_stack = self._rows_stack(
             self.completed_box,
             "emblem-ok-symbolic",
-            "Nothing completed yet",
-            "Finished downloads will appear here.",
+            "Nothing here yet",
+            "Finished and cancelled downloads will appear here.",
         )
         self._completed_stack = completed_stack
 
@@ -216,6 +456,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.tab_stack.add_titled(completed_page, "completed", "Completed")
         box.pack_start(self.tab_stack, True, True, 0)
 
+        self.tab_stack.connect("notify::visible-child-name", self._on_tab_switched)
+
         box.pack_start(self._build_download_path_bar(), False, False, 0)
 
         self.clear_all_btn = clear_all_btn
@@ -223,6 +465,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self._update_completed_empty()
 
         return box
+
+    def _on_tab_switched(self, stack, _pspec=None):
+        """Paste-input section is Ongoing-only; hide it on Completed."""
+        self.add_section.set_visible(stack.get_visible_child_name() == "ongoing")
 
     def _rows_stack(self, rows_box, icon_name, title, hint):
         """Swaps an empty-state placeholder in and out based on whether the
@@ -381,15 +627,36 @@ class MainWindow(Gtk.ApplicationWindow):
         return False
 
     def _on_row_state_change(self, row, new_state):
-        parent = row.get_parent()
         if new_state == "removed":
+            # Covers Clear All, the per-row clear button, and cancelling a
+            # playlist before it ever started (wrong URL dismissal).
+            parent = row.get_parent()
             if parent is not None:
                 parent.remove(row)
             self._update_ongoing_empty()
+            self._update_completed_empty()
         elif new_state == "completed":
+            # Cancelled downloads and fully-finished ones both land here.
+            # Guard against a duplicate transition (a Retry that raced a
+            # late completion callback): don't re-pack a row already here.
+            if row.get_parent() is self.completed_box:
+                self._update_completed_empty()
+                return
+            parent = row.get_parent()
             if parent is not None:
                 parent.remove(row)
             self.completed_box.pack_start(row, False, False, 0)
+            self._update_ongoing_empty()
+            self._update_completed_empty()
+        elif new_state == "active":
+            # A Retry just moved this row back to Ongoing to resume.
+            if row.get_parent() is self.ongoing_box:
+                self._update_ongoing_empty()
+                return
+            parent = row.get_parent()
+            if parent is not None:
+                parent.remove(row)
+            self.ongoing_box.pack_start(row, False, False, 0)
             self._update_ongoing_empty()
             self._update_completed_empty()
 
@@ -407,9 +674,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self.settings_view.show_all()
         settings_scroller.show_all()
         self.root_stack.set_visible_child_name("settings")
+        self.headerbar.hide()  # settings view has its own back button; drop the top bar
 
     def _close_settings(self):
         self.root_stack.set_visible_child_name("main")
+        self.headerbar.show()
 
     def _on_settings_saved(self, new_settings):
         self.settings = new_settings

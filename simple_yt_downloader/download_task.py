@@ -458,6 +458,16 @@ class DownloadTask:
         Both callbacks are invoked from this background thread -- the caller
         must marshal them to the GTK main loop if touching widgets.
         """
+        # A task cancelled before it started (or in the window between the
+        # cancel click and the subprocess spawning) must refuse to run:
+        # cancel() can only flip the flag when there's no process yet, and
+        # the reset below would otherwise erase it -- leaving a background
+        # download running with nobody able to control it. Callers that
+        # want a genuine retry must clear task.cancelled first.
+        if self.cancelled:
+            on_finished(False, "Cancelled")
+            return
+
         # A DownloadTask can be restarted after a failure (retry, or the
         # resume() safety-net restart), so reset lifecycle state here -- a
         # stale run bleeding into the new one previously left a fresh

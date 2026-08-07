@@ -195,5 +195,36 @@ class PhaseTrackerTests(unittest.TestCase):
         self.assertEqual(payload["phase_label"], "Merging…")
 
 
+class DownloadTaskCancelTests(unittest.TestCase):
+    """A DownloadTask cancelled before (or without) a running subprocess
+    must refuse to start: cancel() flips the flag and start() reports the
+    cancellation instead of spawning a process nobody can control."""
+
+    def test_cancel_before_start_marks_cancelled(self):
+        task = DownloadTask("https://example.com/video", "/tmp")
+        self.assertFalse(task.cancelled)
+        task.cancel()
+        self.assertTrue(task.cancelled)
+
+    def test_start_refuses_when_cancelled(self):
+        task = DownloadTask("https://example.com/video", "/tmp")
+        task.cancel()
+        result = {}
+        task.start(
+            lambda info: None,
+            lambda s, m: result.update(success=s, message=m),
+        )
+        self.assertTrue(result)
+        self.assertFalse(result["success"])
+        self.assertEqual(result["message"], "Cancelled")
+        self.assertIsNone(task.process)
+
+    def test_cancel_is_idempotent(self):
+        task = DownloadTask("https://example.com/video", "/tmp")
+        task.cancel()
+        task.cancel()  # must not raise
+        self.assertTrue(task.cancelled)
+
+
 if __name__ == "__main__":
     unittest.main()

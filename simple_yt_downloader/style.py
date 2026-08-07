@@ -59,7 +59,6 @@ scrollbar slider {
 scrollbar slider:hover { background: alpha(@theme_fg_color, 0.45); }
 
 /* ---- HeaderBar ------------------------------------------------- */
-headerbar label.title { font-weight: 700; }
 
 .headerbar-btn {
     min-height: 28px;
@@ -85,6 +84,13 @@ headerbar label.title { font-weight: 700; }
 .download-row label.title {
     font-size: 13px;
     font-weight: 600;
+}
+
+/* Playlist child serial number before the video title */
+.child-index {
+    min-width: 18px;
+    color: @text_muted;
+    font-size: 12px;
 }
 
 /* Slim pinned path bar variant */

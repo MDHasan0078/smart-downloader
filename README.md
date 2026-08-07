@@ -9,6 +9,20 @@ Every quality from 144p to 10K, custom resolution support, selectable
 Single persistent window, no popup-dialog chains. Runs on Debian/Ubuntu-based
 Linux distros (tested on Linux Mint).
 
+## Screenshots
+
+![Ongoing downloads (dark)](screenshots/main-ongoing-dark.png)
+
+![Completed downloads (dark)](screenshots/main-completed-dark.png)
+
+![Per-quality size estimates in the dropdown](screenshots/quality-dropdown-dark.png)
+
+![Playlist with per-video progress](screenshots/playlist-dark.png)
+
+![Settings screen](screenshots/settings-dark.png)
+
+![Ongoing downloads (light theme)](screenshots/main-ongoing-light.png)
+
 ## Features
 
 - **Video or audio** downloads, per-download format and quality selection
@@ -31,7 +45,7 @@ Linux distros (tested on Linux Mint).
   Dependencies" button
 - Download-folder picker pinned to the main window (defaults to
   `~/Downloads`)
-- **Check for Updates** (Settings → About) — queries the GitHub releases API
+- **Check for Updates** (top-bar update icon) — queries the GitHub releases API
   in the background and offers to **Download & Install** the latest version
   for your platform: `.deb` via `pkexec` on Linux, silent installer on
   Windows, `.dmg` → Applications (admin prompt) on macOS — the downloaded
@@ -91,8 +105,8 @@ simple_yt_downloader/     the actual application (Python + GTK3)
   download_task.py       wraps a single yt-dlp subprocess: probing,
                           format-size estimation, download, pause/resume
                           (process-group signaling), merge serialization
-  settings_view.py       the Settings screen (async dependency checking +
-                         in-app "Check for Updates" against the GitHub API)
+   settings_view.py       the Settings screen (async dependency checking +
+                          Light/Dark theme options)
   dependencies.py        checks/installs yt-dlp + ffmpeg via pkexec
   config.py              settings persistence (~/.config/simple-yt-downloader)
   style.py                the app's CSS (rounded cards, accent color, etc.)

@@ -1,3 +1,15 @@
+simple-yt-downloader (2.3.0) unstable; urgency=medium
+
+  * feat: cancel/retry UX -- cancelled videos and playlists (pre-start or
+    mid-run) park in Completed with Retry and an unlocked quality bar;
+    wrong-URL playlists dismiss outright
+  * feat: per-child playlist video removal with recovery -- ✕ on a child
+    promotes it to a standalone cancelled row (retryable, quality re-select)
+  * feat: per-row clear button on Completed rows (video, playlist, promoted)
+  * feat: software-update-available status icon
+  * docs: app screenshots and README gallery
+
+ -- MD. Mahmudul Hasan <mdhasan0078@users.noreply.github.com>  Fri, 07 Aug 2026 18:32:39 +0000
 simple-yt-downloader (2.2.0) unstable; urgency=medium
 
   * 818a6bc fix: Flutter About falls back to 'Unknown' instead of hardcoded version
